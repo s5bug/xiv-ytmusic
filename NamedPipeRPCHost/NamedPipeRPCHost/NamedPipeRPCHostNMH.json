@@ -1,0 +1,7 @@
+﻿{
+  "name": "tf.bug.xiv_ytmusic_rpchost",
+  "description": "XIV YtMusic RPC Host",
+  "path": "NamedPipeRPCHost.exe",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://mfmeogkhaijhclenoidmlfibccoipkin/"]
+}

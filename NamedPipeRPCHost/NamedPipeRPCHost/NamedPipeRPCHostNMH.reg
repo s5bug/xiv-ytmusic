@@ -1,0 +1,3 @@
+﻿Windows Registry Editor Version 5.00
+[HKEY_CURRENT_USER\Software\Google\Chrome\NativeMessagingHosts\tf.bug.xiv_ytmusic_rpchost]
+@="C:\\Users\\aprim\\Documents\\xiv-ytmusic\\NamedPipeRPCHost\\NamedPipeRPCHost\\bin\\Release\\net8.0\\NamedPipeRPCHostNMH.json"
