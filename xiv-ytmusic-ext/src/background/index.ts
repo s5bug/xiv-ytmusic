@@ -25,6 +25,11 @@ interface RpcUnsubscribeVolume extends RpcTx {
   msg_type: "unsubscribe_volume"
 }
 
+interface RpcOnVolumeChange extends RpcTx {
+  msg_type: "on_volume_change",
+  volume: number
+}
+
 interface RpcSetVolume extends RpcTx {
   msg_type: "set_volume"
   volume: number
@@ -61,6 +66,25 @@ interface RpcPause extends RpcTx {
 interface RpcPauseAck extends RpcTx {
   msg_type: "pause_ack"
 }
+interface RpcSubscribePlayerState extends RpcTx {
+  msg_type: "subscribe_player_state"
+}
+interface RpcUnsubscribePlayerState extends RpcTx {
+  msg_type: "unsubscribe_player_state"
+}
+
+const stateLookup: Record<number, "unstarted" | "ended" | "playing" | "paused" | "buffering" | "video queued"> = {
+  [-1]: "unstarted",
+  0: "ended",
+  1: "playing",
+  2: "paused",
+  3: "buffering",
+  5: "video queued"
+}
+interface RpcOnPlayerStateChange extends RpcTx {
+  msg_type: "on_player_state_change",
+  state: (typeof stateLookup)[keyof typeof stateLookup]
+}
 interface RpcNext extends RpcTx {
   msg_type: "next"
 }
@@ -75,11 +99,12 @@ interface RpcPreviousAck extends RpcTx {
 }
 
 type RpcMsg =
-  RpcGetVolume | RpcGetVolumeAck | RpcSubscribeVolume | RpcUnsubscribeVolume |
+  RpcGetVolume | RpcGetVolumeAck | RpcSubscribeVolume | RpcUnsubscribeVolume | RpcOnVolumeChange |
   RpcSetVolume | RpcSetVolumeAck |
   RpcNowPlaying | RpcNowPlayingAck |
   RpcPlay | RpcPlayAck |
   RpcPause | RpcPauseAck |
+  RpcSubscribePlayerState | RpcUnsubscribePlayerState | RpcOnPlayerStateChange |
   RpcNext | RpcNextAck |
   RpcPrevious | RpcPreviousAck
 
@@ -199,7 +224,7 @@ const handleSubscribeVolumeMsg = async (msg: RpcSubscribeVolume): Promise<void> 
     port.onMessage.addListener(m => {
       sendMsg({
         tx_id: msg.tx_id,
-        msg_type: "get_volume_ack",
+        msg_type: "on_volume_change",
         volume: m.volume
       })
     })
@@ -330,6 +355,67 @@ const handlePauseMsg = async (msg: RpcPause): Promise<void> => {
   sendMsg(returnMsg)
 }
 
+const tabCtxSubscribeToPlayerState = (txId: string, extensionId: string): void => {
+  // @ts-ignore
+  let player: YT.Player = document.querySelector("#player").getPlayer()
+
+  let port = chrome.runtime.connect(extensionId, { name: txId })
+
+  let handler = (e: number) => {
+    port.postMessage({ state: e })
+  }
+
+  port.onMessage.addListener(msg => {
+    // @ts-ignore
+    player.removeEventListener("onStateChange", handler)
+  })
+
+  // @ts-ignore
+  player.addEventListener("onStateChange", handler)
+
+  // populate the response dictionary by sending the current state as well
+  port.postMessage({ state: player.getPlayerState() })
+}
+const handleSubscribePlayerStateMsg = async (msg: RpcSubscribePlayerState): Promise<void> => {
+  let tab = await getOrCreateYtmTab()
+
+  // TODO make sure there's not already a subscription with the same tx_id
+
+  let listener = (port: chrome.runtime.Port) => {
+    if (port.name !== msg.tx_id) return;
+
+    chrome.runtime.onConnectExternal.removeListener(listener)
+
+    subscribedStreams[msg.tx_id] = {
+      port: port
+    }
+
+    port.onMessage.addListener(m => {
+      sendMsg({
+        tx_id: msg.tx_id,
+        msg_type: "on_player_state_change",
+        state: stateLookup[m.state]
+      })
+    })
+  }
+
+  chrome.runtime.onConnectExternal.addListener(listener)
+
+  let [result] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id! },
+    func: tabCtxSubscribeToPlayerState,
+    args: [ msg.tx_id, chrome.runtime.id ],
+    world: "MAIN"
+  })
+}
+const handleUnsubscribePlayerStateMsg = async (msg: RpcUnsubscribePlayerState): Promise<void> => {
+  // TODO make sure the tx_id stream actually exists
+  let obj = subscribedStreams[msg.tx_id]
+  subscribedStreams[msg.tx_id] = undefined
+
+  obj?.port.postMessage({})
+}
+
 const tabCtxNext = (): void => {
   // @ts-ignore
   let player: YT.Player = document.querySelector("#player").getPlayer()
@@ -398,6 +484,12 @@ const handleMsg = async (msg: RpcMsg): Promise<void> => {
       break
     case 'pause':
       await handlePauseMsg(msg)
+      break
+    case 'subscribe_player_state':
+      await handleSubscribePlayerStateMsg(msg)
+      break
+    case 'unsubscribe_player_state':
+      await handleUnsubscribePlayerStateMsg(msg)
       break
     case 'next':
       await handleNextMsg(msg)
