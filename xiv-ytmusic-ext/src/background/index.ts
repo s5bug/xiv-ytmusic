@@ -17,6 +17,14 @@ interface RpcGetVolumeAck extends RpcTx {
   volume: number
 }
 
+interface RpcSubscribeVolume extends RpcTx {
+  msg_type: "subscribe_volume"
+}
+
+interface RpcUnsubscribeVolume extends RpcTx {
+  msg_type: "unsubscribe_volume"
+}
+
 interface RpcSetVolume extends RpcTx {
   msg_type: "set_volume"
   volume: number
@@ -67,7 +75,7 @@ interface RpcPreviousAck extends RpcTx {
 }
 
 type RpcMsg =
-  RpcGetVolume | RpcGetVolumeAck |
+  RpcGetVolume | RpcGetVolumeAck | RpcSubscribeVolume | RpcUnsubscribeVolume |
   RpcSetVolume | RpcSetVolumeAck |
   RpcNowPlaying | RpcNowPlayingAck |
   RpcPlay | RpcPlayAck |
@@ -123,6 +131,8 @@ const getOrCreateYtmTab = async () => {
 let rpcHost = chrome.runtime.connectNative("tf.bug.xiv_ytmusic_rpchost")
 console.log("rpc host started: ", rpcHost)
 
+let subscribedStreams: Record<string, { port: chrome.runtime.Port } | undefined> = {}
+
 const sendMsg = (msg: RpcMsg): void => {
   console.log("sending msg: ", msg)
   rpcHost.postMessage(msg)
@@ -149,6 +159,67 @@ const handleGetVolumeMsg = async (msg: RpcGetVolume): Promise<void> => {
   }
 
   sendMsg(returnMsg)
+}
+
+const tabCtxSubscribeToVolume = (txId: string, extensionId: string): void => {
+  // @ts-ignore
+  let player: YT.Player = document.querySelector("#player").getPlayer()
+
+  let port = chrome.runtime.connect(extensionId, { name: txId })
+
+  let handler = (e: { volume: number }) => {
+    port.postMessage({ volume: e.volume })
+  }
+
+  port.onMessage.addListener(msg => {
+    // @ts-ignore
+    player.removeEventListener("onVolumeChange", handler)
+  })
+
+  // @ts-ignore
+  player.addEventListener("onVolumeChange", handler)
+
+  // populate the response dictionary by sending the current state as well
+  port.postMessage({ volume: player.getVolume() })
+}
+const handleSubscribeVolumeMsg = async (msg: RpcSubscribeVolume): Promise<void> => {
+  let tab = await getOrCreateYtmTab()
+
+  // TODO make sure there's not already a subscription with the same tx_id
+
+  let listener = (port: chrome.runtime.Port) => {
+    if (port.name !== msg.tx_id) return;
+
+    chrome.runtime.onConnectExternal.removeListener(listener)
+
+    subscribedStreams[msg.tx_id] = {
+      port: port
+    }
+
+    port.onMessage.addListener(m => {
+      sendMsg({
+        tx_id: msg.tx_id,
+        msg_type: "get_volume_ack",
+        volume: m.volume
+      })
+    })
+  }
+
+  chrome.runtime.onConnectExternal.addListener(listener)
+
+  let [result] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id! },
+    func: tabCtxSubscribeToVolume,
+    args: [ msg.tx_id, chrome.runtime.id ],
+    world: "MAIN"
+  })
+}
+const handleUnsubscribeVolumeMsg = async (msg: RpcUnsubscribeVolume): Promise<void> => {
+  // TODO make sure the tx_id stream actually exists
+  let obj = subscribedStreams[msg.tx_id]
+  subscribedStreams[msg.tx_id] = undefined
+
+  obj?.port.postMessage({})
 }
 
 const tabCtxSetVolume = (v: number): number => {
@@ -309,6 +380,12 @@ const handleMsg = async (msg: RpcMsg): Promise<void> => {
   switch(msg.msg_type) {
     case 'get_volume':
       await handleGetVolumeMsg(msg)
+      break
+    case 'subscribe_volume':
+      await handleSubscribeVolumeMsg(msg)
+      break
+    case 'unsubscribe_volume':
+      await handleUnsubscribeVolumeMsg(msg)
       break
     case 'set_volume':
       await handleSetVolumeMsg(msg)

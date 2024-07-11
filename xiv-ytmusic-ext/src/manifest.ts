@@ -25,6 +25,9 @@ export default defineManifest({
   host_permissions: [
     "*://music.youtube.com/*"
   ],
+  externally_connectable: {
+    matches: ["*://music.youtube.com/*"]
+  },
   web_accessible_resources: [
     {
       resources: ['img/logo-16.png', 'img/logo-34.png', 'img/logo-48.png', 'img/logo-128.png'],
