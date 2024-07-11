@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NamedPipeRPCHost", "NamedPipeRPCHost\NamedPipeRPCHost.csproj", "{11B2800F-FF4B-4B02-B6F2-99015001BA7C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XivYtMusicRPCHost", "XivYtMusicRPCHost\XivYtMusicRPCHost.csproj", "{11B2800F-FF4B-4B02-B6F2-99015001BA7C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
