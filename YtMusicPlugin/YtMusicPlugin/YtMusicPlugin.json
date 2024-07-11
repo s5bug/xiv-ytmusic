@@ -1,0 +1,10 @@
+{
+  "Author": "Aly",
+  "Name": "YT Music Plugin",
+  "Punchline": "Control YouTube Music.",
+  "Description": "Control YouTube Music with /ytm.",
+  "ApplicableVersion": "any",
+  "Tags": [
+    "music"
+  ]
+}
