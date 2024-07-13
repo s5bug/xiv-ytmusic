@@ -6,6 +6,5 @@
 
 ## TODO
 
-- remove a lot of duplication on RPC
 - decide what I actually want to do with the `contentScript`
 - add option to change the socket port
