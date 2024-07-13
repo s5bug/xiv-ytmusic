@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Numerics;
@@ -27,6 +28,7 @@ public class MainWindow : Window, IDisposable {
     private readonly AsyncServerStreamingCall<PlayerStateMsg> playerStateSubscription;
     private readonly AsyncServerStreamingCall<VolumeMsg> volumeSubscription;
     private readonly AsyncServerStreamingCall<NowPlayingMsg> nowPlayingSubscription;
+    private readonly AsyncServerStreamingCall<QueueStateMsg> queueStateSubscription;
 
     public MainWindow(Plugin plugin, ITextureProvider textureProvider)
         : base(
@@ -45,6 +47,7 @@ public class MainWindow : Window, IDisposable {
         volumeSubscription = this.plugin.State.Client.Volume(new Empty());
         playerStateSubscription = this.plugin.State.Client.PlayerState(new Empty());
         nowPlayingSubscription = this.plugin.State.Client.NowPlaying(new Empty());
+        queueStateSubscription = this.plugin.State.Client.QueueState(new Empty());
     }
 
     private static void RemovedCallback(CacheEntryRemovedArguments args) {
@@ -72,6 +75,7 @@ public class MainWindow : Window, IDisposable {
         volumeSubscription.Dispose();
         playerStateSubscription.Dispose();
         nowPlayingSubscription.Dispose();
+        queueStateSubscription.Dispose();
         httpClient.Dispose();
         urlTextureCache.Dispose();
     }
@@ -92,18 +96,18 @@ public class MainWindow : Window, IDisposable {
         
         if (ImGui.BeginChild("cover_progress", new Vector2(topSectionHeight, topSectionHeight))) {
             this.DrawCoverProgress(lineHeightSpacing);
-            ImGui.EndChild();
         }
+        ImGui.EndChild();
         ImGui.SameLine();
         if (ImGui.BeginChild("playlist_tabs", new Vector2(playlistWidth, topSectionHeight))) {
-            this.DrawPlaylistTabs();
-            ImGui.EndChild();
+            this.DrawPlaylistTabs(smallSongHeight, lineHeightSpacing);
         }
+        ImGui.EndChild();
 
         if (ImGui.BeginChild("controls_box", new Vector2(ImGui.GetContentRegionAvail().X, bottomBarHeight))) {
             this.DrawControlsBox(smallSongHeight, lineHeightSpacing);
-            ImGui.EndChild();
         }
+        ImGui.EndChild();
     }
     
     public void DrawCoverProgress(float lineHeightSpacing) {
@@ -132,10 +136,50 @@ public class MainWindow : Window, IDisposable {
     
     private float dummy = 0.5f; // TODO
 
-    public void DrawPlaylistTabs() {
+    public void DrawPlaylistTabs(float smallSongHeight, float lineHeightSpacing) {
         if (ImGui.BeginTabBar("playlist_tabs")) {
             if (ImGui.BeginTabItem("Up Next")) {
-                ImGui.Text("playlist would go here"); // TODO
+                if (ImGui.BeginChild("###playlist_upnext_container")) {
+                    var current = queueStateSubscription.ResponseStream.Current;
+                    var itemSize = new Vector2(ImGui.GetContentRegionAvail().X, smallSongHeight);
+                    for (var i = 0; i < current.Items.Count; i++) {
+                        var queueItemMsg = current.Items[i];
+                        var isSelected = current.HasCurrentIndex && i == current.CurrentIndex;
+
+                        ImGui.PushStyleColor(ImGuiCol.Button,
+                                             isSelected ? new Vector4(0.5f, 0.5f, 0.5f, 0.1f) : Vector4.Zero);
+
+                        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.5f, 0.5f, 0.5f, 0.2f));
+                        ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.5f, 0.5f, 0.5f, 0.35f));
+                        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 0);
+
+                        var preButtonCursor = ImGui.GetCursorPos();
+
+                        if (ImGui.Button($"###playlist_button{i}", itemSize)) {
+                            var msg = new PlayQueueIndexMsg();
+                            msg.Index = (uint)i;
+                            plugin.State.Client.DoPlayQueueIndexAsync(msg);
+                        }
+
+                        ImGui.PopStyleVar();
+
+                        ImGui.PopStyleColor(3);
+
+                        ImGui.SetCursorPos(preButtonCursor);
+                        if (ImGui.BeginChild($"###playlist_smallsong{i}", itemSize, false, ImGuiWindowFlags.NoInputs)) {
+                            DrawSmallSong(
+                                smallSongHeight,
+                                lineHeightSpacing,
+                                queueItemMsg.Title,
+                                queueItemMsg.Author,
+                                queueItemMsg.ThumbnailUrl);
+                        }
+
+                        ImGui.EndChild();
+                    }
+                }
+                ImGui.EndChild();
+
                 ImGui.EndTabItem();
             }
 
@@ -187,27 +231,12 @@ public class MainWindow : Window, IDisposable {
 
             if (ImGui.TableNextColumn()) {
                 if (nowPlayingSubscription.ResponseStream.Current is { } nowPlayingMsg) {
-                    if (ImGui.BeginChild("thumbnail", new Vector2(smallSongHeight, smallSongHeight))) {
-                        IDalamudTextureWrap? img = GrabTexture(nowPlayingMsg.ThumbnailUrl);
-
-                        if (img is { } tw) {
-                            ImGui.Image(tw.ImGuiHandle, new Vector2(smallSongHeight, smallSongHeight));
-                        } else {
-                            using var font = ImRaii.PushFont(UiBuilder.IconFont);
-                            ImGui.Text(FontAwesomeIcon.QuestionCircle.ToIconString());
-                        }
-                        
-                        ImGui.EndChild();
-                    }
-
-                    ImGui.SameLine();
-                    
-                    var firstLine = ImGui.GetCursorPos();
-                    ImGui.Text(nowPlayingMsg.Title);
-
-                    var secondLine = firstLine.WithY(firstLine.Y + lineHeightSpacing);
-                    ImGui.SetCursorPos(secondLine);
-                    ImGui.Text(nowPlayingMsg.Author);
+                    DrawSmallSong(
+                        smallSongHeight,
+                        lineHeightSpacing,
+                        nowPlayingMsg.Title,
+                        nowPlayingMsg.Author,
+                        nowPlayingMsg.ThumbnailUrl);
                 }
             }
 
@@ -232,5 +261,33 @@ public class MainWindow : Window, IDisposable {
 
             ImGui.EndTable();
         }
+    }
+
+    private void DrawSmallSong(
+        float smallSongHeight,
+        float lineHeightSpacing,
+        string title,
+        string author,
+        string thumbnailUrl) {
+        if (ImGui.BeginChild("thumbnail", new Vector2(smallSongHeight, smallSongHeight), false, ImGuiWindowFlags.NoInputs)) {
+            IDalamudTextureWrap? img = GrabTexture(thumbnailUrl);
+
+            if (img is { } tw) {
+                ImGui.Image(tw.ImGuiHandle, new Vector2(smallSongHeight, smallSongHeight));
+            } else {
+                using var font = ImRaii.PushFont(UiBuilder.IconFont);
+                ImGui.Text(FontAwesomeIcon.QuestionCircle.ToIconString());
+            }
+        }
+        ImGui.EndChild();
+
+        ImGui.SameLine();
+                    
+        var firstLine = ImGui.GetCursorPos();
+        ImGui.Text(title);
+
+        var secondLine = firstLine.WithY(firstLine.Y + lineHeightSpacing);
+        ImGui.SetCursorPos(secondLine);
+        ImGui.Text(author);
     }
 }

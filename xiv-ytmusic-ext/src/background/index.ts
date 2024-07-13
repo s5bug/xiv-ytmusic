@@ -223,8 +223,15 @@ const tabCtxGetQueueState = (): QueueStateMsg => {
 
   const qca = Array.from(queueChildren!)
 
+  const elementIsSelected = (qi: Element) => {
+    return qi.hasAttribute("selected") ||
+      (qi.querySelector("#primary-renderer ytmusic-player-queue-item")?.hasAttribute("selected") || false)
+  }
+
+  const idx = qca.findIndex(elementIsSelected)
+
   return {
-    currentIndex: qca.findIndex(qi => qi.hasAttribute("selected")),
+    currentIndex: idx === -1 ? undefined : idx,
     items: qca.map(e => {
       return {
         title: e.querySelector<HTMLElement>(".song-title")?.title!,
@@ -250,8 +257,15 @@ const tabCtxSubscribeQueueState = (portName: string, extensionId: string): void 
 
     const qca = Array.from(queueChildren!)
 
+    const elementIsSelected = (qi: Element) => {
+      return qi.hasAttribute("selected") ||
+        qi.querySelector("#primary-renderer > ytmusic-player-queue-item")?.hasAttribute("selected")
+    }
+
+    const idx = qca.findIndex(elementIsSelected)
+
     const msg: QueueStateMsg = {
-      currentIndex: qca.findIndex(qi => qi.hasAttribute("selected")),
+      currentIndex: idx === -1 ? undefined : idx,
       items: qca.map(e => {
         return {
           title: e.querySelector<HTMLElement>(".song-title")?.title!,
@@ -284,8 +298,15 @@ const tabCtxSubscribeQueueState = (portName: string, extensionId: string): void 
 
   const qca = Array.from(queueChildren!)
 
+  const elementIsSelected = (qi: Element) => {
+    return qi.hasAttribute("selected") ||
+      qi.querySelector("#primary-renderer > ytmusic-player-queue-item")?.hasAttribute("selected")
+  }
+
+  const idx = qca.findIndex(elementIsSelected)
+
   const now: QueueStateMsg = {
-    currentIndex: qca.findIndex(qi => qi.hasAttribute("selected")),
+    currentIndex: idx === -1 ? undefined : idx,
     items: qca.map(e => {
       return {
         title: e.querySelector<HTMLElement>(".song-title")?.title!,

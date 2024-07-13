@@ -48,7 +48,7 @@ message NowPlayingMsg {
 }
 
 message QueueStateMsg {
-  uint32 current_index = 1;
+  optional uint32 current_index = 1;
   repeated QueueItemMsg items = 2;
 }
 
