@@ -4,6 +4,7 @@ using Dalamud.Plugin;
 using System.IO;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin.Services;
+using NetMQ;
 using YtMusicPlugin.Windows;
 
 namespace YtMusicPlugin;
@@ -18,6 +19,7 @@ public sealed class Plugin : IDalamudPlugin {
     public readonly WindowSystem WindowSystem = new("YtMusicPlugin");
     private MainWindow MainWindow { get; init; }
     
+    private NetMQPoller Poller { get; init; }
     public YtMusicState State { get; init; }
 
     public Plugin(
@@ -31,7 +33,9 @@ public sealed class Plugin : IDalamudPlugin {
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
         Configuration.Initialize(PluginInterface);
 
-        State = new YtMusicState();
+        Poller = new NetMQPoller();
+        State = new YtMusicState(Poller);
+        Poller.RunAsync();
 
         MainWindow = new MainWindow(this, textureProvider);
 
@@ -52,6 +56,7 @@ public sealed class Plugin : IDalamudPlugin {
 
         MainWindow.Dispose();
         State.Dispose();
+        Poller.Dispose();
 
         CommandManager.RemoveHandler(YtmCommand);
     }

@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+
+service YtMusic {
+  rpc SetVolume(VolumeMsg) returns (google.protobuf.Empty);
+  rpc GetVolume(google.protobuf.Empty) returns (VolumeMsg);
+  rpc Volume(google.protobuf.Empty) returns (stream VolumeMsg);
+  
+  rpc DoNext(google.protobuf.Empty) returns (google.protobuf.Empty);
+  rpc DoPrevious(google.protobuf.Empty) returns (google.protobuf.Empty);
+  rpc DoPlay(google.protobuf.Empty) returns (google.protobuf.Empty);
+  rpc DoPause(google.protobuf.Empty) returns (google.protobuf.Empty);
+  
+  rpc GetPlayerState(google.protobuf.Empty) returns (PlayerStateMsg);
+  rpc PlayerState(google.protobuf.Empty) returns (stream PlayerStateMsg);
+  
+  rpc GetNowPlaying(google.protobuf.Empty) returns (NowPlayingMsg);
+  rpc NowPlaying(google.protobuf.Empty) returns (stream NowPlayingMsg);
+  
+  rpc GetQueueState(google.protobuf.Empty) returns (QueueStateMsg);
+  rpc QueueState(google.protobuf.Empty) returns (stream QueueStateMsg);
+  rpc DoPlayQueueIndex(PlayQueueIndexMsg) returns (google.protobuf.Empty);
+}
+
+message VolumeMsg {
+  uint32 volume = 1;
+}
+
+message PlayerStateMsg {
+  PlayerStateEnum state = 1;
+}
+
+enum PlayerStateEnum {
+  PS_UNSTARTED = 0;
+  PS_ENDED = 1;
+  PS_PLAYING = 2;
+  PS_PAUSED = 3;
+  PS_BUFFERING = 4;
+  PS_VIDEO_QUEUED = 5;
+}
+
+message NowPlayingMsg {
+  string title = 1;
+  string author = 2;
+  string thumbnail_url = 3;
+  string cover_url = 4;
+}
+
+message QueueStateMsg {
+  uint32 current_index = 1;
+  repeated QueueItemMsg items = 2;
+}
+
+message QueueItemMsg {
+  string title = 1;
+  string author = 2;
+  string thumbnail_url = 3;
+}
+
+message PlayQueueIndexMsg {
+  uint32 index = 1;
+}
+

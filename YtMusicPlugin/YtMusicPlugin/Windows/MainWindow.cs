@@ -12,6 +12,8 @@ using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin.Services;
 using Dalamud.Utility.Numerics;
+using Google.Protobuf.WellKnownTypes;
+using Grpc.Core;
 using ImGuiNET;
 
 namespace YtMusicPlugin.Windows;
@@ -21,6 +23,10 @@ public class MainWindow : Window, IDisposable {
     private readonly HttpClient httpClient;
     private readonly ITextureProvider textureProvider;
     private readonly MemoryCache urlTextureCache;
+
+    private readonly AsyncServerStreamingCall<PlayerStateMsg> playerStateSubscription;
+    private readonly AsyncServerStreamingCall<VolumeMsg> volumeSubscription;
+    private readonly AsyncServerStreamingCall<NowPlayingMsg> nowPlayingSubscription;
 
     public MainWindow(Plugin plugin, ITextureProvider textureProvider)
         : base(
@@ -36,8 +42,9 @@ public class MainWindow : Window, IDisposable {
         httpClient = new HttpClient();
         urlTextureCache = new MemoryCache("xivytmusic thumbnail texture cache");
 
-        VolumeSubscription = this.plugin.State.Volume.Subscribe(new VolumeObserver(this));
-        PlayerStateSubscription = this.plugin.State.PlayerState.Subscribe(new PlayerStateObserver(this));
+        volumeSubscription = this.plugin.State.Client.Volume(new Empty());
+        playerStateSubscription = this.plugin.State.Client.PlayerState(new Empty());
+        nowPlayingSubscription = this.plugin.State.Client.NowPlaying(new Empty());
     }
 
     private static void RemovedCallback(CacheEntryRemovedArguments args) {
@@ -62,8 +69,9 @@ public class MainWindow : Window, IDisposable {
     }
     
     public void Dispose() {
-        VolumeSubscription.Dispose();
-        PlayerStateSubscription.Dispose();
+        volumeSubscription.Dispose();
+        playerStateSubscription.Dispose();
+        nowPlayingSubscription.Dispose();
         httpClient.Dispose();
         urlTextureCache.Dispose();
     }
@@ -103,8 +111,8 @@ public class MainWindow : Window, IDisposable {
         float leftoverSpace = ImGui.GetContentRegionAvail().X - coverHeight;
         float offset = leftoverSpace / 2.0f;
         
-        if (knownNowPlayingData is { } nowPlayingData) {
-            IDalamudTextureWrap? img = GrabTexture(nowPlayingData.CoverUrl);
+        if (nowPlayingSubscription.ResponseStream.Current is { } nowPlayingMsg) {
+            IDalamudTextureWrap? img = GrabTexture(nowPlayingMsg.CoverUrl);
 
             if (img is { } tw) {
                 ImGui.SetCursorPosX(ImGui.GetCursorPosX() + offset);
@@ -138,41 +146,6 @@ public class MainWindow : Window, IDisposable {
             ImGui.EndTabBar();
         }
     }
-
-    private NowPlayingData? knownNowPlayingData = null;
-
-    private void FetchNowPlaying() {
-        plugin.State.GetNowPlayingData().ContinueWith(d => {
-            knownNowPlayingData = d.Result;
-        });
-    }
-
-    private IDisposable PlayerStateSubscription { get; init; }
-    private PlayerState? knownPlayerState = null;
-
-    private record PlayerStateObserver(MainWindow Outer) : IObserver<PlayerState> {
-        public void OnCompleted() { }
-
-        public void OnError(Exception error) { }
-
-        public void OnNext(PlayerState value) {
-            Outer.knownPlayerState = value;
-            Outer.FetchNowPlaying();
-        }
-    }
-    
-    private IDisposable VolumeSubscription { get; init; }
-    private int? knownVolume = null;
-
-    private record VolumeObserver(MainWindow Outer) : IObserver<int> {
-        public void OnCompleted() { }
-
-        public void OnError(Exception error) { }
-
-        public void OnNext(int value) {
-            Outer.knownVolume = value;
-        }
-    }
     
     public void DrawControlsBox(float smallSongHeight, float lineHeightSpacing) {
         if (ImGui.BeginTable("controls_table", 3, ImGuiTableFlags.SizingStretchSame, ImGui.GetContentRegionAvail())) {
@@ -181,21 +154,21 @@ public class MainWindow : Window, IDisposable {
             if (ImGui.TableNextColumn()) {
                 using (var font = ImRaii.PushFont(UiBuilder.IconFont)) {
                     if (ImGui.Button(FontAwesomeIcon.StepBackward.ToIconString())) {
-                        plugin.State.SetPrevious();
+                        _ = plugin.State.Client.DoPreviousAsync(new Empty());
                     }
 
                     ImGui.SameLine();
-                    switch (knownPlayerState) {
-                        case PlayerState.Playing:
-                        case PlayerState.Buffering:
+                    switch (playerStateSubscription.ResponseStream.Current.State) {
+                        case PlayerStateEnum.PsPlaying:
+                        case PlayerStateEnum.PsBuffering:
                             if (ImGui.Button(FontAwesomeIcon.Pause.ToIconString())) {
-                                plugin.State.SetPause();
+                                _ = plugin.State.Client.DoPauseAsync(new Empty());
                             }
 
                             break;
-                        case PlayerState.Paused:
+                        case PlayerStateEnum.PsPaused:
                             if (ImGui.Button(FontAwesomeIcon.Play.ToIconString())) {
-                                plugin.State.SetPlay();
+                                _ = plugin.State.Client.DoPlayAsync(new Empty());
                             }
 
                             break;
@@ -207,15 +180,15 @@ public class MainWindow : Window, IDisposable {
 
                     ImGui.SameLine();
                     if (ImGui.Button(FontAwesomeIcon.StepForward.ToIconString())) {
-                        plugin.State.SetNext();
+                        _ = plugin.State.Client.DoNextAsync(new Empty());
                     }
                 }
             }
 
             if (ImGui.TableNextColumn()) {
-                if (knownNowPlayingData is { } nowPlayingData) {
+                if (nowPlayingSubscription.ResponseStream.Current is { } nowPlayingMsg) {
                     if (ImGui.BeginChild("thumbnail", new Vector2(smallSongHeight, smallSongHeight))) {
-                        IDalamudTextureWrap? img = GrabTexture(nowPlayingData.ThumbnailUrl);
+                        IDalamudTextureWrap? img = GrabTexture(nowPlayingMsg.ThumbnailUrl);
 
                         if (img is { } tw) {
                             ImGui.Image(tw.ImGuiHandle, new Vector2(smallSongHeight, smallSongHeight));
@@ -230,19 +203,22 @@ public class MainWindow : Window, IDisposable {
                     ImGui.SameLine();
                     
                     var firstLine = ImGui.GetCursorPos();
-                    ImGui.Text(nowPlayingData.Title);
+                    ImGui.Text(nowPlayingMsg.Title);
 
                     var secondLine = firstLine.WithY(firstLine.Y + lineHeightSpacing);
                     ImGui.SetCursorPos(secondLine);
-                    ImGui.Text(nowPlayingData.Author);
+                    ImGui.Text(nowPlayingMsg.Author);
                 }
             }
 
             if (ImGui.TableNextColumn()) {
                 // TODO change icon based on volume state
-                if (knownVolume is { } volumeToSend) {
+                if (volumeSubscription.ResponseStream.Current is { } volumeMsg) {
+                    int volumeToSend = (int) volumeMsg.Volume; // always 0-100 anyways so who cares
                     if (ImGui.SliderInt("##volumeSlider", ref volumeToSend, 0, 100)) {
-                        plugin.State.SetVolume(volumeToSend);
+                        var msg = new VolumeMsg();
+                        msg.Volume = (uint)volumeToSend;
+                        plugin.State.Client.SetVolumeAsync(msg);
                     }
 
                     ImGui.SameLine();

@@ -16,8 +16,9 @@
     "node": ">=14.18.0"
   },
   "scripts": {
+    "protobuf": "protoc --plugin=protoc-gen-ts_proto=\".\\\\node_modules\\\\.bin\\\\protoc-gen-ts_proto.cmd\" \"--ts_proto_out=./src/gen\" \"--ts_proto_opt=env=browser\" \"--proto_path=../protobuf\" \"../protobuf/xivytmusic.proto\"",
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "pnpm run protobuf && tsc && vite build",
     "preview": "vite preview",
     "fmt": "prettier --write '**/*.{ts,json,css,scss,md}'",
     "zip": "pnpm run build && node src/zip.js"
@@ -31,5 +32,10 @@
     "prettier": "^3.2.5",
     "typescript": "^5.4.5",
     "vite": "^5.2.11"
+  },
+  "dependencies": {
+    "protobufjs": "^7.3.2",
+    "rxjs": "^7.8.1",
+    "ts-proto": "^1.181.0"
   }
 }

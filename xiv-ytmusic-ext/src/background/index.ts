@@ -1,112 +1,30 @@
-import { chromeExtension } from '@crxjs/vite-plugin'
+import {
+  NowPlayingMsg,
+  PlayerStateEnum,
+  PlayerStateMsg,
+  PlayQueueIndexMsg,
+  QueueStateMsg,
+  VolumeMsg,
+  YtMusic,
+  YtMusicClientImpl,
+} from '../gen/xivytmusic'
+import { Empty } from '../gen/google/protobuf/empty'
+import { mergeAll, mergeMap, Observable, Observer, Subscriber, Subscription, Unsubscribable } from 'rxjs'
+import { map } from 'rxjs/operators'
 
 chrome.runtime.onStartup.addListener(() => {
   console.log("startup! this message exists to work around a Chrome bug")
+  console.log(YtMusicClientImpl)
 })
 
-interface RpcTx {
-  tx_id: string
+const stateLookup: Record<number, PlayerStateEnum> = {
+  [-1]: PlayerStateEnum.PS_UNSTARTED,
+  0: PlayerStateEnum.PS_ENDED,
+  1: PlayerStateEnum.PS_PLAYING,
+  2: PlayerStateEnum.PS_PAUSED,
+  3: PlayerStateEnum.PS_BUFFERING,
+  5: PlayerStateEnum.PS_VIDEO_QUEUED
 }
-
-interface RpcGetVolume extends RpcTx {
-  msg_type: "get_volume"
-}
-
-interface RpcGetVolumeAck extends RpcTx {
-  msg_type: "get_volume_ack",
-  volume: number
-}
-
-interface RpcSubscribeVolume extends RpcTx {
-  msg_type: "subscribe_volume"
-}
-
-interface RpcUnsubscribeVolume extends RpcTx {
-  msg_type: "unsubscribe_volume"
-}
-
-interface RpcOnVolumeChange extends RpcTx {
-  msg_type: "on_volume_change",
-  volume: number
-}
-
-interface RpcSetVolume extends RpcTx {
-  msg_type: "set_volume"
-  volume: number
-}
-
-interface RpcSetVolumeAck extends RpcTx {
-  msg_type: "set_volume_ack"
-  volume: number
-}
-
-interface RpcNowPlaying extends RpcTx {
-  msg_type: "now_playing"
-}
-
-interface NowPlayingData {
-  title: string,
-  author: string,
-  thumbnail_url: string,
-  cover_url: string
-}
-interface RpcNowPlayingAck extends RpcTx, NowPlayingData {
-  msg_type: "now_playing_ack"
-}
-
-interface RpcPlay extends RpcTx {
-  msg_type: "play"
-}
-interface RpcPlayAck extends RpcTx {
-  msg_type: "play_ack"
-}
-interface RpcPause extends RpcTx {
-  msg_type: "pause"
-}
-interface RpcPauseAck extends RpcTx {
-  msg_type: "pause_ack"
-}
-interface RpcSubscribePlayerState extends RpcTx {
-  msg_type: "subscribe_player_state"
-}
-interface RpcUnsubscribePlayerState extends RpcTx {
-  msg_type: "unsubscribe_player_state"
-}
-
-const stateLookup: Record<number, "unstarted" | "ended" | "playing" | "paused" | "buffering" | "video queued"> = {
-  [-1]: "unstarted",
-  0: "ended",
-  1: "playing",
-  2: "paused",
-  3: "buffering",
-  5: "video queued"
-}
-interface RpcOnPlayerStateChange extends RpcTx {
-  msg_type: "on_player_state_change",
-  state: (typeof stateLookup)[keyof typeof stateLookup]
-}
-interface RpcNext extends RpcTx {
-  msg_type: "next"
-}
-interface RpcNextAck extends RpcTx {
-  msg_type: "next_ack"
-}
-interface RpcPrevious extends RpcTx {
-  msg_type: "previous"
-}
-interface RpcPreviousAck extends RpcTx {
-  msg_type: "previous_ack"
-}
-
-type RpcMsg =
-  RpcGetVolume | RpcGetVolumeAck | RpcSubscribeVolume | RpcUnsubscribeVolume | RpcOnVolumeChange |
-  RpcSetVolume | RpcSetVolumeAck |
-  RpcNowPlaying | RpcNowPlayingAck |
-  RpcPlay | RpcPlayAck |
-  RpcPause | RpcPauseAck |
-  RpcSubscribePlayerState | RpcUnsubscribePlayerState | RpcOnPlayerStateChange |
-  RpcNext | RpcNextAck |
-  RpcPrevious | RpcPreviousAck
 
 const waitForElem = async <K extends Element>(selector: string): Promise<K> => {
   return new Promise(resolve => {
@@ -156,47 +74,25 @@ const getOrCreateYtmTab = async () => {
 let rpcHost = chrome.runtime.connectNative("tf.bug.xiv_ytmusic_rpchost")
 console.log("rpc host started: ", rpcHost)
 
-let subscribedStreams: Record<string, { port: chrome.runtime.Port } | undefined> = {}
-
-const sendMsg = (msg: RpcMsg): void => {
-  console.log("sending msg: ", msg)
-  rpcHost.postMessage(msg)
-}
-
-const tabCtxGetVolume = (): number => {
-  // @ts-ignore
-  let player: YT.Player = document.querySelector("#player").getPlayer()
-  return player.getVolume()
-}
-const handleGetVolumeMsg = async (msg: RpcGetVolume): Promise<void> => {
-  let tab = await getOrCreateYtmTab()
-  let [result] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id! },
-    func: tabCtxGetVolume,
-    args: [],
-    world: "MAIN"
-  })
-
-  let returnMsg: RpcGetVolumeAck = {
-    tx_id: msg.tx_id,
-    msg_type: "get_volume_ack",
-    volume: result.result!
-  }
-
-  sendMsg(returnMsg)
-}
-
-const tabCtxSubscribeToVolume = (txId: string, extensionId: string): void => {
+const tabCtxGetVolume = (): VolumeMsg => {
   // @ts-ignore
   let player: YT.Player = document.querySelector("#player").getPlayer()
 
-  let port = chrome.runtime.connect(extensionId, { name: txId })
+  return { volume: player.getVolume() }
+}
+
+const tabCtxSubscribeVolume = (portName: string, extensionId: string): void => {
+  // @ts-ignore
+  let player: YT.Player = document.querySelector("#player").getPlayer()
+
+  let port = chrome.runtime.connect(extensionId, { name: portName })
 
   let handler = (e: { volume: number }) => {
-    port.postMessage({ volume: e.volume })
+    const msg: VolumeMsg = { volume: e.volume }
+    port.postMessage(msg)
   }
 
-  port.onMessage.addListener(msg => {
+  port.onMessage.addListener(() => {
     // @ts-ignore
     player.removeEventListener("onVolumeChange", handler)
   })
@@ -205,167 +101,28 @@ const tabCtxSubscribeToVolume = (txId: string, extensionId: string): void => {
   player.addEventListener("onVolumeChange", handler)
 
   // populate the response dictionary by sending the current state as well
-  port.postMessage({ volume: player.getVolume() })
-}
-const handleSubscribeVolumeMsg = async (msg: RpcSubscribeVolume): Promise<void> => {
-  let tab = await getOrCreateYtmTab()
-
-  // TODO make sure there's not already a subscription with the same tx_id
-
-  let listener = (port: chrome.runtime.Port) => {
-    if (port.name !== msg.tx_id) return;
-
-    chrome.runtime.onConnectExternal.removeListener(listener)
-
-    subscribedStreams[msg.tx_id] = {
-      port: port
-    }
-
-    port.onMessage.addListener(m => {
-      sendMsg({
-        tx_id: msg.tx_id,
-        msg_type: "on_volume_change",
-        volume: m.volume
-      })
-    })
-  }
-
-  chrome.runtime.onConnectExternal.addListener(listener)
-
-  let [result] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id! },
-    func: tabCtxSubscribeToVolume,
-    args: [ msg.tx_id, chrome.runtime.id ],
-    world: "MAIN"
-  })
-}
-const handleUnsubscribeVolumeMsg = async (msg: RpcUnsubscribeVolume): Promise<void> => {
-  // TODO make sure the tx_id stream actually exists
-  let obj = subscribedStreams[msg.tx_id]
-  subscribedStreams[msg.tx_id] = undefined
-
-  obj?.port.postMessage({})
+  const now: VolumeMsg = { volume: player.getVolume() }
+  port.postMessage(now)
 }
 
-const tabCtxSetVolume = (v: number): number => {
+const tabCtxSetVolume = (v: VolumeMsg): Empty => {
   // @ts-ignore
   let player: YT.Player = document.querySelector("#player").getPlayer()
-  player.setVolume(v)
-  return player.getVolume()
-}
-const handleSetVolumeMsg = async (msg: RpcSetVolume): Promise<void> => {
-  let tab = await getOrCreateYtmTab()
-  let [result] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id! },
-    func: tabCtxSetVolume,
-    args: [ msg.volume ],
-    world: "MAIN"
-  })
-
-  let returnMsg: RpcSetVolumeAck = {
-    tx_id: msg.tx_id,
-    msg_type: "set_volume_ack",
-    volume: result.result!
-  }
-
-  sendMsg(returnMsg)
+  player.setVolume(v.volume)
+  return {}
 }
 
-const tabCtxNowPlaying = (): NowPlayingData => {
-  let playerElem: HTMLElement = document.querySelector("#player")!
-  // @ts-ignore
-  let player: YT.Player = playerElem.getPlayer()
-
-  // TODO type getVideoData()
-  // @ts-ignore
-  let title: string = player.getVideoData().title
-  // @ts-ignore
-  let author: string = player.getVideoData().author
-  let cover: string = playerElem.querySelector<HTMLImageElement>("#song-image #thumbnail img")!.src
-  let thumb: string = cover
-
-  return {
-    title,
-    author,
-    cover_url: cover,
-    thumbnail_url: thumb
-  }
-}
-const handleNowPlayingMsg = async (msg: RpcNowPlaying): Promise<void> => {
-  let tab = await getOrCreateYtmTab()
-  let [result] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id! },
-    func: tabCtxNowPlaying,
-    args: [ ],
-    world: "MAIN"
-  })
-
-  let returnMsg: RpcNowPlayingAck = {
-    tx_id: msg.tx_id,
-    msg_type: "now_playing_ack",
-    ...result.result!
-  }
-
-  sendMsg(returnMsg)
-}
-
-const tabCtxPlay = (): void => {
+const tabCtxSubscribePlayerState = (portName: string, extensionId: string): void => {
   // @ts-ignore
   let player: YT.Player = document.querySelector("#player").getPlayer()
 
-  return player.playVideo()
-}
-const handlePlayMsg = async (msg: RpcPlay): Promise<void> => {
-  let tab = await getOrCreateYtmTab()
-  let [result] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id! },
-    func: tabCtxPlay,
-    args: [ ],
-    world: "MAIN"
-  })
-
-  let returnMsg: RpcPlayAck = {
-    tx_id: msg.tx_id,
-    msg_type: "play_ack"
-  }
-
-  sendMsg(returnMsg)
-}
-
-const tabCtxPause = (): void => {
-  // @ts-ignore
-  let player: YT.Player = document.querySelector("#player").getPlayer()
-
-  player.pauseVideo()
-}
-const handlePauseMsg = async (msg: RpcPause): Promise<void> => {
-  let tab = await getOrCreateYtmTab()
-  let [result] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id! },
-    func: tabCtxPause,
-    args: [ ],
-    world: "MAIN"
-  })
-
-  let returnMsg: RpcPauseAck = {
-    tx_id: msg.tx_id,
-    msg_type: "pause_ack"
-  }
-
-  sendMsg(returnMsg)
-}
-
-const tabCtxSubscribeToPlayerState = (txId: string, extensionId: string): void => {
-  // @ts-ignore
-  let player: YT.Player = document.querySelector("#player").getPlayer()
-
-  let port = chrome.runtime.connect(extensionId, { name: txId })
+  let port = chrome.runtime.connect(extensionId, { name: portName })
 
   let handler = (e: number) => {
-    port.postMessage({ state: e })
+    port.postMessage(e)
   }
 
-  port.onMessage.addListener(msg => {
+  port.onMessage.addListener(() => {
     // @ts-ignore
     player.removeEventListener("onStateChange", handler)
   })
@@ -374,133 +131,349 @@ const tabCtxSubscribeToPlayerState = (txId: string, extensionId: string): void =
   player.addEventListener("onStateChange", handler)
 
   // populate the response dictionary by sending the current state as well
-  port.postMessage({ state: player.getPlayerState() })
-}
-const handleSubscribePlayerStateMsg = async (msg: RpcSubscribePlayerState): Promise<void> => {
-  let tab = await getOrCreateYtmTab()
-
-  // TODO make sure there's not already a subscription with the same tx_id
-
-  let listener = (port: chrome.runtime.Port) => {
-    if (port.name !== msg.tx_id) return;
-
-    chrome.runtime.onConnectExternal.removeListener(listener)
-
-    subscribedStreams[msg.tx_id] = {
-      port: port
-    }
-
-    port.onMessage.addListener(m => {
-      sendMsg({
-        tx_id: msg.tx_id,
-        msg_type: "on_player_state_change",
-        state: stateLookup[m.state]
-      })
-    })
-  }
-
-  chrome.runtime.onConnectExternal.addListener(listener)
-
-  let [result] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id! },
-    func: tabCtxSubscribeToPlayerState,
-    args: [ msg.tx_id, chrome.runtime.id ],
-    world: "MAIN"
-  })
-}
-const handleUnsubscribePlayerStateMsg = async (msg: RpcUnsubscribePlayerState): Promise<void> => {
-  // TODO make sure the tx_id stream actually exists
-  let obj = subscribedStreams[msg.tx_id]
-  subscribedStreams[msg.tx_id] = undefined
-
-  obj?.port.postMessage({})
+  const now: number = player.getPlayerState()
+  port.postMessage(now)
 }
 
-const tabCtxNext = (): void => {
+const tabCtxDoNext = (): Empty => {
   // @ts-ignore
   let player: YT.Player = document.querySelector("#player").getPlayer()
 
   player.nextVideo()
-}
-const handleNextMsg = async (msg: RpcNext): Promise<void> => {
-  let tab = await getOrCreateYtmTab()
-  let [result] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id! },
-    func: tabCtxNext,
-    args: [ ],
-    world: "MAIN"
-  })
 
-  let returnMsg: RpcNextAck = {
-    tx_id: msg.tx_id,
-    msg_type: "next_ack"
-  }
-
-  sendMsg(returnMsg)
+  return {}
 }
 
-const tabCtxPrevious = (): void => {
+const tabCtxDoPause = (): Empty => {
+  // @ts-ignore
+  let player: YT.Player = document.querySelector("#player").getPlayer()
+
+  player.pauseVideo()
+
+  return {}
+}
+
+const tabCtxDoPlay = (): Empty => {
+  // @ts-ignore
+  let player: YT.Player = document.querySelector("#player").getPlayer()
+
+  player.playVideo()
+
+  return {}
+}
+
+const tabCtxDoPlayQueueIndex = (request: PlayQueueIndexMsg): Empty => {
+  const app = document.querySelector('ytmusic-app')!
+  const queue = app.querySelector('ytmusic-player-queue')!
+  const queueContents = queue.querySelector("#contents")
+  const queueChildren = queueContents?.children
+
+  const child = queueChildren?.item(request.index)
+  const childPlayButton = child?.querySelector('ytmusic-play-button-renderer')
+
+  // @ts-ignore
+  childPlayButton?.onTap(new Event("pointerdown"))
+
+  return {}
+}
+
+const tabCtxDoPrevious = (): Empty => {
   // @ts-ignore
   let player: YT.Player = document.querySelector("#player").getPlayer()
 
   player.previousVideo()
+
+  return {}
 }
-const handlePreviousMsg = async (msg: RpcPrevious): Promise<void> => {
+
+const tabCtxGetNowPlaying = (): NowPlayingMsg => {
+  const playerElem: HTMLElement = document.querySelector("#player")!
+  // @ts-ignore
+  let player: YT.Player = playerElem.getPlayer()
+
+  // @ts-ignore
+  const title: string = player.getVideoData().title
+  // @ts-ignore
+  const author: string = player.getVideoData().author
+  const coverUrl: string =
+    playerElem.querySelector<HTMLImageElement>("#song-image #thumbnail img")!.src
+  const thumbnailUrl: string =
+    coverUrl
+
+  return {
+    title: title,
+    author: author,
+    coverUrl: coverUrl,
+    thumbnailUrl: thumbnailUrl
+  }
+}
+
+const tabCtxGetPlayerState = (): number => {
+  // @ts-ignore
+  let player: YT.Player = document.querySelector("#player").getPlayer()
+
+  return player.getPlayerState()
+}
+
+const tabCtxGetQueueState = (): QueueStateMsg => {
+  const app = document.querySelector('ytmusic-app')!
+  const queue = app.querySelector('ytmusic-player-queue')!
+  const queueContents = queue.querySelector("#contents")
+  const queueChildren = queueContents?.children
+
+  const qca = Array.from(queueChildren!)
+
+  return {
+    currentIndex: qca.findIndex(qi => qi.hasAttribute("selected")),
+    items: qca.map(e => {
+      return {
+        title: e.querySelector<HTMLElement>(".song-title")?.title!,
+        author: e.querySelector<HTMLElement>(".byline")?.title!,
+        thumbnailUrl: e.querySelector<HTMLImageElement>(".yt-img-shadow")?.src!
+      }
+    })
+  }
+}
+
+const tabCtxSubscribeQueueState = (portName: string, extensionId: string): void => {
+  // @ts-ignore
+  const app = document.querySelector('ytmusic-app')!
+  const queue = app.querySelector('ytmusic-player-queue')!
+
+  let port = chrome.runtime.connect(extensionId, { name: portName })
+
+  let handler = (records: MutationRecord[]) => {
+    const app = document.querySelector('ytmusic-app')!
+    const queue = app.querySelector('ytmusic-player-queue')!
+    const queueContents = queue.querySelector("#contents")
+    const queueChildren = queueContents?.children
+
+    const qca = Array.from(queueChildren!)
+
+    const msg: QueueStateMsg = {
+      currentIndex: qca.findIndex(qi => qi.hasAttribute("selected")),
+      items: qca.map(e => {
+        return {
+          title: e.querySelector<HTMLElement>(".song-title")?.title!,
+          author: e.querySelector<HTMLElement>(".byline")?.title!,
+          thumbnailUrl: e.querySelector<HTMLImageElement>(".yt-img-shadow")?.src!
+        }
+      })
+    }
+    port.postMessage(msg)
+  }
+
+  const config: MutationObserverInit = {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    characterData: true
+  }
+
+  const mutationObserver = new MutationObserver(handler)
+
+  port.onMessage.addListener(msg => {
+    mutationObserver.disconnect()
+  })
+
+  mutationObserver.observe(queue, config)
+
+  // populate the response dictionary by sending the current state as well
+  const queueContents = queue.querySelector("#contents")
+  const queueChildren = queueContents?.children
+
+  const qca = Array.from(queueChildren!)
+
+  const now: QueueStateMsg = {
+    currentIndex: qca.findIndex(qi => qi.hasAttribute("selected")),
+    items: qca.map(e => {
+      return {
+        title: e.querySelector<HTMLElement>(".song-title")?.title!,
+        author: e.querySelector<HTMLElement>(".byline")?.title!,
+        thumbnailUrl: e.querySelector<HTMLImageElement>(".yt-img-shadow")?.src!
+      }
+    })
+  }
+  port.postMessage(now)
+}
+
+const unaryYtmCall = async <Args extends any[], Result>(func: (...args: Args) => Result, args: Args): Promise<Awaited<Result>> => {
   let tab = await getOrCreateYtmTab()
   let [result] = await chrome.scripting.executeScript({
     target: { tabId: tab.id! },
-    func: tabCtxPrevious,
-    args: [ ],
+    func: func,
+    args: args,
     world: "MAIN"
   })
-
-  let returnMsg: RpcPreviousAck = {
-    tx_id: msg.tx_id,
-    msg_type: "previous_ack"
-  }
-
-  sendMsg(returnMsg)
+  // @ts-ignore
+  return result.result
 }
 
-const handleMsg = async (msg: RpcMsg): Promise<void> => {
-  switch(msg.msg_type) {
-    case 'get_volume':
-      await handleGetVolumeMsg(msg)
-      break
-    case 'subscribe_volume':
-      await handleSubscribeVolumeMsg(msg)
-      break
-    case 'unsubscribe_volume':
-      await handleUnsubscribeVolumeMsg(msg)
-      break
-    case 'set_volume':
-      await handleSetVolumeMsg(msg)
-      break
-    case 'now_playing':
-      await handleNowPlayingMsg(msg)
-      break
-    case 'play':
-      await handlePlayMsg(msg)
-      break
-    case 'pause':
-      await handlePauseMsg(msg)
-      break
-    case 'subscribe_player_state':
-      await handleSubscribePlayerStateMsg(msg)
-      break
-    case 'unsubscribe_player_state':
-      await handleUnsubscribePlayerStateMsg(msg)
-      break
-    case 'next':
-      await handleNextMsg(msg)
-      break
-    case 'previous':
-      await handlePreviousMsg(msg)
-      break
+const streamYtmSubscribe: <Args extends any[], Result>(
+  tabCtxSubscribe: (portName: string, extensionId: string, ...args: Args) => (void | Promise<void>),
+  args: Args,
+  subscriber: Subscriber<Result>
+) => Unsubscribable = (tabCtxSubscribe, args, subscriber) => {
+  let portName = crypto.randomUUID()
+
+  let ready: Promise<chrome.runtime.Port> = (async () => {
+    let tab = await getOrCreateYtmTab()
+
+    let portPromise: Promise<chrome.runtime.Port> = new Promise(resolve => {
+      const listener = (port: chrome.runtime.Port) => {
+        if (port.name !== portName) return
+
+        chrome.runtime.onConnectExternal.removeListener(listener)
+        port.onMessage.addListener(m => subscriber.next(m))
+        resolve(port)
+      }
+
+      chrome.runtime.onConnectExternal.addListener(listener)
+    })
+
+    let [result] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id! },
+      func: tabCtxSubscribe,
+      args: [portName, chrome.runtime.id, ...args],
+      world: "MAIN"
+    })
+
+    return await portPromise
+  })()
+
+  return {
+    unsubscribe() {
+      ready.then(port => {
+        port.postMessage({})
+        port.disconnect()
+      })
+    }
   }
 }
 
-rpcHost.onMessage.addListener((msg: RpcMsg) => {
+const streamYtmObservable = <Args extends any[], Result>(
+  tabCtxSubscribe: (portName: string, extensionId: string, ...args: Args) => (void | Promise<void>),
+  args: Args
+): Observable<Result> => {
+  return new Observable<Result>(subscriber => streamYtmSubscribe(
+    tabCtxSubscribe,
+    args,
+    subscriber
+  ))
+}
+
+const playerStateObservable: Observable<PlayerStateMsg> =
+  streamYtmObservable<[], number>(tabCtxSubscribePlayerState, []).pipe(map(stateNumber => ({
+    state: stateLookup[stateNumber],
+  })))
+
+const queueStateObservable: Observable<QueueStateMsg> =
+  streamYtmObservable(tabCtxSubscribeQueueState, [])
+
+const volumeObservable: Observable<VolumeMsg> =
+  streamYtmObservable(tabCtxSubscribeVolume, [])
+
+const ytMusicServer: YtMusic = {
+  async DoNext(request: Empty): Promise<Empty> {
+    return await unaryYtmCall(tabCtxDoNext, [])
+  },
+  async DoPause(request: Empty): Promise<Empty> {
+    return await unaryYtmCall(tabCtxDoPause, [])
+  },
+  async DoPlay(request: Empty): Promise<Empty> {
+    return await unaryYtmCall(tabCtxDoPlay, [])
+  },
+  async DoPlayQueueIndex(request: PlayQueueIndexMsg): Promise<Empty> {
+    return await unaryYtmCall(tabCtxDoPlayQueueIndex, [request])
+  },
+  async DoPrevious(request: Empty): Promise<Empty> {
+    return await unaryYtmCall(tabCtxDoPrevious, [])
+  },
+  async GetNowPlaying(request: Empty): Promise<NowPlayingMsg> {
+    return await unaryYtmCall(tabCtxGetNowPlaying, [])
+  },
+  async GetPlayerState(request: Empty): Promise<PlayerStateMsg> {
+    const stateNumber = await unaryYtmCall(tabCtxGetPlayerState, [])
+    return {
+      state: stateLookup[stateNumber]
+    }
+  },
+  async GetQueueState(request: Empty): Promise<QueueStateMsg> {
+    return await unaryYtmCall(tabCtxGetQueueState, [])
+  },
+  async GetVolume(request: Empty): Promise<VolumeMsg> {
+    return await unaryYtmCall(tabCtxGetVolume, [])
+  },
+  NowPlaying(request: Empty): Observable<NowPlayingMsg> {
+    return playerStateObservable.pipe(mergeMap(
+      async () => await unaryYtmCall(tabCtxGetNowPlaying, [])
+    ))
+  },
+  PlayerState(request: Empty): Observable<PlayerStateMsg> {
+    return playerStateObservable
+  },
+  QueueState(request: Empty): Observable<QueueStateMsg> {
+    return queueStateObservable
+  },
+  async SetVolume(request: VolumeMsg): Promise<Empty> {
+    return await unaryYtmCall(tabCtxSetVolume, [request])
+  },
+  Volume(request: Empty): Observable<VolumeMsg> {
+    return volumeObservable
+  }
+}
+
+interface RpcUnsub {
+  tx_id: string
+}
+
+interface RpcMsg {
+  message: any,
+  tx_id: string,
+  method: string
+}
+
+let subscriptions: Record<string, Subscription> = {}
+
+const handleMsg = async (msg: RpcMsg | RpcUnsub): Promise<void> => {
+  if("method" in msg) {
+    if(!msg.method.startsWith("/YtMusic/")) return;
+
+    const methodName = msg.method.substring("/YtMusic/".length)
+    const caller: (request: any) => Promise<any> | Observable<any> =
+      // @ts-ignore
+      ytMusicServer[methodName]
+
+    const result = caller(msg.message)
+
+    if (result instanceof Observable) {
+      const observer: Partial<Observer<any>> = {
+        next(value: any) {
+          const returnObj = { tx_id: msg.tx_id, message: value }
+          console.log('returning stream message: ', returnObj)
+          rpcHost.postMessage(returnObj)
+        }
+      }
+
+      console.log('creating subscription')
+      subscriptions[msg.tx_id] = result.subscribe(observer)
+    } else {
+      const returnMsg = await result
+      const returnObj = { tx_id: msg.tx_id, message: returnMsg }
+
+      console.log('returning unary message: ', returnObj)
+      rpcHost.postMessage(returnObj)
+    }
+  } else {
+    const subscription = subscriptions[msg.tx_id]
+    if(subscription === undefined) return;
+
+    delete subscriptions[msg.tx_id]
+    subscription.unsubscribe()
+  }
+}
+
+rpcHost.onMessage.addListener((msg: RpcMsg | RpcUnsub) => {
   console.log("received msg: ", msg)
   handleMsg(msg) // fire-and-forget
 })

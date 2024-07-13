@@ -11,7 +11,17 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.27.2" />
+    <PackageReference Include="Grpc.Core" Version="2.46.6" />
+    <PackageReference Include="Grpc.Tools" Version="2.64.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="NetMQ" Version="4.0.1.13" />
     <PackageReference Include="System.Runtime.Caching" Version="8.0.0" />
+  </ItemGroup>
+    
+  <ItemGroup>
+    <Protobuf Include="../../protobuf/xivytmusic.proto" />
   </ItemGroup>
 </Project>

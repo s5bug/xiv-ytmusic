@@ -8,6 +8,28 @@
         "resolved": "2.1.13",
         "contentHash": "rMN1omGe8536f4xLMvx9NwfvpAc9YFFfeXJ1t4P4PE6Gu8WCIoFliR1sh07hM+bfODmesk/dvMbji7vNI+B/pQ=="
       },
+      "Google.Protobuf": {
+        "type": "Direct",
+        "requested": "[3.27.2, )",
+        "resolved": "3.27.2",
+        "contentHash": "0wdgA3LO9mBS477jieBFs4pU1sWhVtwv/P+i9nAEiFDQyUA7PPHDBbJL1CeqYtV18jLiq9og4n7wSVCO171OBg=="
+      },
+      "Grpc.Core": {
+        "type": "Direct",
+        "requested": "[2.46.6, )",
+        "resolved": "2.46.6",
+        "contentHash": "ZoRg3KmOJ2urTF4+u3H0b1Yv10xzz2Y/flFWS2tnRmj8dbKLeiJaSRqu4LOBD3ova90evqLkVZ85kUkC4JT4lw==",
+        "dependencies": {
+          "Grpc.Core.Api": "2.46.6",
+          "System.Memory": "4.5.3"
+        }
+      },
+      "Grpc.Tools": {
+        "type": "Direct",
+        "requested": "[2.64.0, )",
+        "resolved": "2.64.0",
+        "contentHash": "W5RrhDFHUhioASktxfuDs5fTjWUxwegljZAig9zFL8nWNskeyQA6OXN2choWKYxGrljer25VqCJCMbWz7XHvqg=="
+      },
       "NetMQ": {
         "type": "Direct",
         "requested": "[4.0.1.13, )",
@@ -33,6 +55,14 @@
         "type": "Transitive",
         "resolved": "0.1.69",
         "contentHash": "xyXJLi+wjy6AtIyWXHXJkPS0gItqVT4lg5w++7bA5YEjugYKdrFMGxCo6KUJ1yYwjriLQJ1g35LDljZs3Q90XQ=="
+      },
+      "Grpc.Core.Api": {
+        "type": "Transitive",
+        "resolved": "2.46.6",
+        "contentHash": "Z7HJGqJYyKb53qfp1jf0wRDYs3sxOnkAFxXAW6q52LLmX/zxzjtFLI9eaWO5UC0weiWjn4iT1FzR+tj9qYZAMg==",
+        "dependencies": {
+          "System.Memory": "4.5.3"
+        }
       },
       "Microsoft.Bcl.AsyncInterfaces": {
         "type": "Transitive",
@@ -88,6 +118,11 @@
         "type": "Transitive",
         "resolved": "5.0.0",
         "contentHash": "MTvUIktmemNB+El0Fgw9egyqT9AYSIk6DTJeoDSpc3GIHxHCMo8COqkWT1mptX5tZ1SlQ6HJZ0OsSvMth1c12w=="
+      },
+      "System.Memory": {
+        "type": "Transitive",
+        "resolved": "4.5.3",
+        "contentHash": "3oDzvc/zzetpTKWMShs1AADwZjQ/36HnsufHRPcOjyRAAMLDlu2iD33MBI2opxnezcVUtXyqDXXjoFMOU9c7SA=="
       },
       "System.Numerics.Vectors": {
         "type": "Transitive",

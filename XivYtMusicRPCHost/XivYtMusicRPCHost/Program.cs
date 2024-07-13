@@ -27,13 +27,6 @@ async Task Server() {
 }
 
 async Task ReadWriteForever(CancellationTokenSource cts, PairSocket writeDataTo, Stream stdin) {
-    SemaphoreSlim waitForIo = new SemaphoreSlim(0, 1);
-    writeDataTo.SendReady += (_, _) => {
-        try {
-            waitForIo.Release();
-        } catch (SemaphoreFullException) {}
-    };
-    
     while (true) {
         byte[] lengthPrefix = new byte[4];
         await stdin.ReadExactlyAsync(lengthPrefix.AsMemory(), cts.Token);
@@ -42,9 +35,7 @@ async Task ReadWriteForever(CancellationTokenSource cts, PairSocket writeDataTo,
         byte[] buffer = new byte[length];
         await stdin.ReadExactlyAsync(buffer.AsMemory(), cts.Token);
 
-        while (!writeDataTo.TrySendFrame(buffer)) {
-            await waitForIo.WaitAsync();
-        }
+        writeDataTo.SendFrame(buffer);
     }
 }
 
