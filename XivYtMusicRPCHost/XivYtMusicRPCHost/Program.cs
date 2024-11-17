@@ -27,24 +27,54 @@ async Task Server() {
 }
 
 async Task ReadWriteForever(CancellationTokenSource cts, PairSocket writeDataTo, Stream stdin) {
-    while (true) {
+    while (!cts.IsCancellationRequested) {
         byte[] lengthPrefix = new byte[4];
-        await stdin.ReadExactlyAsync(lengthPrefix.AsMemory(), cts.Token);
+
+        try {
+            await stdin.ReadExactlyAsync(lengthPrefix.AsMemory(), cts.Token);
+        }
+        catch (EndOfStreamException) {
+            _ = cts.CancelAsync();
+            return;
+        }
+        catch (ObjectDisposedException) {
+            _ = cts.CancelAsync();
+            return;
+        }
+
         uint length = BitConverter.ToUInt32(lengthPrefix);
 
         byte[] buffer = new byte[length];
-        await stdin.ReadExactlyAsync(buffer.AsMemory(), cts.Token);
+
+        try {
+            await stdin.ReadExactlyAsync(buffer.AsMemory(), cts.Token);
+        }
+        catch (EndOfStreamException) {
+            _ = cts.CancelAsync();
+            return;
+        }
+        catch (ObjectDisposedException) {
+            _ = cts.CancelAsync();
+            return;
+        }
 
         writeDataTo.SendFrame(buffer);
     }
 }
 
 async Task WriteReadForever(CancellationTokenSource cts, PairSocket readDataFrom, Stream stdout) {
-    while (true) {
+    while (!cts.IsCancellationRequested) {
         var (msg, _) = await readDataFrom.ReceiveFrameBytesAsync(cts.Token);
 
         byte[] lengthPrefix = BitConverter.GetBytes((uint) msg.Length);
-        await stdout.WriteAsync(lengthPrefix.AsMemory());
-        await stdout.WriteAsync(msg.AsMemory());
+
+        try {
+            await stdout.WriteAsync(lengthPrefix.AsMemory(), cts.Token);
+            await stdout.WriteAsync(msg.AsMemory(), cts.Token);
+        }
+        catch (ObjectDisposedException) {
+            _ = cts.CancelAsync();
+            return;
+        }
     }
 }

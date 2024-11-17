@@ -24,18 +24,18 @@
     "zip": "pnpm run build && node src/zip.js"
   },
   "devDependencies": {
-    "@crxjs/vite-plugin": "^2.0.0-beta.23",
+    "@crxjs/vite-plugin": "2.0.0-beta.28",
     "@types/chrome": "^0.0.267",
     "@types/youtube": "^0.0.50",
     "gulp": "^5.0.0",
     "gulp-zip": "^6.0.0",
-    "prettier": "^3.2.5",
-    "typescript": "^5.4.5",
-    "vite": "^5.2.11"
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
   },
   "dependencies": {
-    "protobufjs": "^7.3.2",
+    "@bufbuild/protobuf": "^2.2.2",
     "rxjs": "^7.8.1",
-    "ts-proto": "^1.181.0"
+    "ts-proto": "^2.3.0"
   }
 }
