@@ -3,5 +3,5 @@
   "description": "XIV YtMusic RPC Host",
   "path": "XivYtMusicRPCHost.exe",
   "type": "stdio",
-  "allowed_origins": ["chrome-extension://mfmeogkhaijhclenoidmlfibccoipkin/"]
+  "allowed_origins": ["chrome-extension://ejcpeebnmmilepionclldkmdinfimope/"]
 }
