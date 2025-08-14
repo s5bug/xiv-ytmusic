@@ -15,7 +15,7 @@ using Dalamud.Plugin.Services;
 using Dalamud.Utility.Numerics;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
-using ImGuiNET;
+using Dalamud.Bindings.ImGui;
 
 namespace YtMusicPlugin.Windows;
 
@@ -120,7 +120,7 @@ public class MainWindow : Window, IDisposable {
 
             if (img is { } tw) {
                 ImGui.SetCursorPosX(ImGui.GetCursorPosX() + offset);
-                ImGui.Image(tw.ImGuiHandle, new Vector2(coverHeight, coverHeight));
+                ImGui.Image(tw.Handle, new Vector2(coverHeight, coverHeight));
             } else {
                 using var font = ImRaii.PushFont(UiBuilder.IconFont);
                 ImGui.Text(FontAwesomeIcon.QuestionCircle.ToIconString());
@@ -273,7 +273,7 @@ public class MainWindow : Window, IDisposable {
             IDalamudTextureWrap? img = GrabTexture(thumbnailUrl);
 
             if (img is { } tw) {
-                ImGui.Image(tw.ImGuiHandle, new Vector2(smallSongHeight, smallSongHeight));
+                ImGui.Image(tw.Handle, new Vector2(smallSongHeight, smallSongHeight));
             } else {
                 using var font = ImRaii.PushFont(UiBuilder.IconFont);
                 ImGui.Text(FontAwesomeIcon.QuestionCircle.ToIconString());
