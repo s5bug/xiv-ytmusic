@@ -1,20 +1,22 @@
 import { defineConfig } from 'vite'
+import zip from 'vite-plugin-zip-pack'
 import { crx } from '@crxjs/vite-plugin'
-import manifest from './src/manifest'
+import manifest from './manifest.config.ts'
+import { name, version } from './package.json'
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(() => {
   return {
-    build: {
-      emptyOutDir: true,
-      outDir: 'build',
-      rollupOptions: {
-        output: {
-          chunkFileNames: 'assets/chunk-[hash].js',
-        },
+    plugins: [
+      crx({ manifest }),
+      zip({ outDir: 'release', outFileName: `crx-${name}-${version}.zip` }),
+    ],
+    server: {
+      cors: {
+        origin: [
+          /chrome-extension:\/\//,
+        ],
       },
     },
-
-    plugins: [crx({ manifest })],
   }
 })

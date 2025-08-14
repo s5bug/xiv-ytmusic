@@ -9,11 +9,27 @@ import {
   YtMusicClientImpl,
 } from '../gen/xivytmusic'
 import { Empty } from '../gen/google/protobuf/empty'
-import { mergeAll, mergeMap, Observable, Observer, Subscriber, Subscription, Unsubscribable } from 'rxjs'
+import { mergeMap, Observable, Observer, Subscriber, Subscription, Unsubscribable } from 'rxjs'
 import { map } from 'rxjs/operators'
 
+interface YtMusicPlayerElement extends HTMLElement {
+  getPlayer(): YT.Player
+}
+
+interface YtMusicPlayButtonRendererElement extends HTMLElement {
+  onTap(event: Event): void
+}
+
+interface YtFormattedStringElement extends HTMLElement {
+  readonly title: string
+}
+
+function getCurrentDocumentPlayerElement(): YtMusicPlayerElement {
+  return document.querySelector<YtMusicPlayerElement>('#player')!
+}
+
 chrome.runtime.onStartup.addListener(() => {
-  console.log("startup! this message exists to work around a Chrome bug")
+  console.log('startup! this message exists to work around a Chrome bug')
   console.log(YtMusicClientImpl)
 })
 
@@ -23,82 +39,80 @@ const stateLookup: Record<number, PlayerStateEnum> = {
   1: PlayerStateEnum.PS_PLAYING,
   2: PlayerStateEnum.PS_PAUSED,
   3: PlayerStateEnum.PS_BUFFERING,
-  5: PlayerStateEnum.PS_VIDEO_QUEUED
+  5: PlayerStateEnum.PS_VIDEO_QUEUED,
 }
 
 const waitForElem = async <K extends Element>(selector: string): Promise<K> => {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     if (document.querySelector(selector)) {
-      return resolve(document.querySelector<K>(selector)!);
+      return resolve(document.querySelector<K>(selector)!)
     }
 
-    const observer = new MutationObserver(mutations => {
+    const observer = new MutationObserver((_mutations) => {
       if (document.querySelector(selector)) {
-        observer.disconnect();
-        resolve(document.querySelector<K>(selector)!);
+        observer.disconnect()
+        resolve(document.querySelector<K>(selector)!)
       }
-    });
+    })
 
     observer.observe(document.documentElement, {
       childList: true,
-      subtree: true
-    });
-  });
+      subtree: true,
+    })
+  })
 }
 
 const getOrCreateYtmTab = async () => {
-  let extantYtmTabs = await chrome.tabs.query({
-    url: "*://music.youtube.com/*"
+  const extantYtmTabs = await chrome.tabs.query({
+    url: '*://music.youtube.com/*',
   })
-  let chosenTab;
-  if(extantYtmTabs.length > 0) {
+  let chosenTab
+  if (extantYtmTabs.length > 0) {
     chosenTab = extantYtmTabs[0]
   } else {
     chosenTab = await chrome.tabs.create({
-      url: "https://music.youtube.com/",
+      url: 'https://music.youtube.com/',
       pinned: true,
-      active: false
+      active: false,
     })
   }
 
   await chrome.scripting.executeScript({
     target: { tabId: chosenTab.id! },
     func: waitForElem,
-    args: [ "#player" ],
-    world: "MAIN"
+    args: ['#player'],
+    world: 'MAIN',
   })
 
   return chosenTab
 }
 
-let rpcHost = chrome.runtime.connectNative("tf.bug.xiv_ytmusic_rpchost")
-console.log("rpc host started: ", rpcHost)
+const rpcHost = chrome.runtime.connectNative('tf.bug.xiv_ytmusic_rpchost')
+console.log('rpc host started: ', rpcHost)
 
 const tabCtxGetVolume = (): VolumeMsg => {
-  // @ts-ignore
-  let player: YT.Player = document.querySelector("#player").getPlayer()
+  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
 
   return { volume: player.getVolume() }
 }
 
 const tabCtxSubscribeVolume = (portName: string, extensionId: string): void => {
-  // @ts-ignore
-  let player: YT.Player = document.querySelector("#player").getPlayer()
+  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
 
-  let port = chrome.runtime.connect(extensionId, { name: portName })
+  const port = chrome.runtime.connect(extensionId, { name: portName })
 
-  let handler = (e: { volume: number }) => {
+  const handler = (e: { volume: number }) => {
     const msg: VolumeMsg = { volume: e.volume }
     port.postMessage(msg)
   }
 
   port.onMessage.addListener(() => {
-    // @ts-ignore
-    player.removeEventListener("onVolumeChange", handler)
+    // @ts-expect-error ytmusic player uses custom event names
+    player.removeEventListener('onVolumeChange', handler)
   })
 
-  // @ts-ignore
-  player.addEventListener("onVolumeChange", handler)
+  // @ts-expect-error ytmusic player uses custom event names
+  player.addEventListener('onVolumeChange', handler)
 
   // populate the response dictionary by sending the current state as well
   const now: VolumeMsg = { volume: player.getVolume() }
@@ -106,29 +120,27 @@ const tabCtxSubscribeVolume = (portName: string, extensionId: string): void => {
 }
 
 const tabCtxSetVolume = (v: VolumeMsg): Empty => {
-  // @ts-ignore
-  let player: YT.Player = document.querySelector("#player").getPlayer()
+  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
   player.setVolume(v.volume)
   return {}
 }
 
 const tabCtxSubscribePlayerState = (portName: string, extensionId: string): void => {
-  // @ts-ignore
-  let player: YT.Player = document.querySelector("#player").getPlayer()
+  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
 
-  let port = chrome.runtime.connect(extensionId, { name: portName })
+  const port = chrome.runtime.connect(extensionId, { name: portName })
 
-  let handler = (e: number) => {
+  const handler = (e: number) => {
     port.postMessage(e)
   }
 
   port.onMessage.addListener(() => {
-    // @ts-ignore
-    player.removeEventListener("onStateChange", handler)
+    // @ts-expect-error ytmusic player uses custom event names
+    player.removeEventListener('onStateChange', handler)
   })
 
-  // @ts-ignore
-  player.addEventListener("onStateChange", handler)
+  // @ts-expect-error ytmusic player uses custom event names
+  player.addEventListener('onStateChange', handler)
 
   // populate the response dictionary by sending the current state as well
   const now: number = player.getPlayerState()
@@ -136,8 +148,7 @@ const tabCtxSubscribePlayerState = (portName: string, extensionId: string): void
 }
 
 const tabCtxDoNext = (): Empty => {
-  // @ts-ignore
-  let player: YT.Player = document.querySelector("#player").getPlayer()
+  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
 
   player.nextVideo()
 
@@ -145,8 +156,7 @@ const tabCtxDoNext = (): Empty => {
 }
 
 const tabCtxDoPause = (): Empty => {
-  // @ts-ignore
-  let player: YT.Player = document.querySelector("#player").getPlayer()
+  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
 
   player.pauseVideo()
 
@@ -154,8 +164,7 @@ const tabCtxDoPause = (): Empty => {
 }
 
 const tabCtxDoPlay = (): Empty => {
-  // @ts-ignore
-  let player: YT.Player = document.querySelector("#player").getPlayer()
+  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
 
   player.playVideo()
 
@@ -165,21 +174,20 @@ const tabCtxDoPlay = (): Empty => {
 const tabCtxDoPlayQueueIndex = (request: PlayQueueIndexMsg): Empty => {
   const app = document.querySelector('ytmusic-app')!
   const queue = app.querySelector('ytmusic-player-queue')!
-  const queueContents = queue.querySelector("#contents")
+  const queueContents = queue.querySelector('#contents')
   const queueChildren = queueContents?.children
 
   const child = queueChildren?.item(request.index)
-  const childPlayButton = child?.querySelector('ytmusic-play-button-renderer')
+  const childPlayButton
+    = child?.querySelector<YtMusicPlayButtonRendererElement>('ytmusic-play-button-renderer')
 
-  // @ts-ignore
-  childPlayButton?.onTap(new Event("pointerdown"))
+  childPlayButton?.onTap(new Event('pointerdown'))
 
   return {}
 }
 
 const tabCtxDoPrevious = (): Empty => {
-  // @ts-ignore
-  let player: YT.Player = document.querySelector("#player").getPlayer()
+  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
 
   player.previousVideo()
 
@@ -187,30 +195,26 @@ const tabCtxDoPrevious = (): Empty => {
 }
 
 const tabCtxGetNowPlaying = (): NowPlayingMsg => {
-  const playerElem: HTMLElement = document.querySelector("#player")!
-  // @ts-ignore
-  let player: YT.Player = playerElem.getPlayer()
+  const playerElem = getCurrentDocumentPlayerElement()
+  const player: YT.Player = playerElem.getPlayer()
 
-  // @ts-ignore
   const title: string = player.getVideoData().title
-  // @ts-ignore
   const author: string = player.getVideoData().author
-  const coverUrl: string =
-    playerElem.querySelector<HTMLImageElement>("#song-image #thumbnail img")!.src
-  const thumbnailUrl: string =
-    coverUrl
+  const coverUrl: string
+    = playerElem.querySelector<HTMLImageElement>('#song-image #thumbnail img')!.src
+  const thumbnailUrl: string
+    = coverUrl
 
   return {
     title: title,
     author: author,
     coverUrl: coverUrl,
-    thumbnailUrl: thumbnailUrl
+    thumbnailUrl: thumbnailUrl,
   }
 }
 
 const tabCtxGetPlayerState = (): number => {
-  // @ts-ignore
-  let player: YT.Player = document.querySelector("#player").getPlayer()
+  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
 
   return player.getPlayerState()
 }
@@ -218,62 +222,68 @@ const tabCtxGetPlayerState = (): number => {
 const tabCtxGetQueueState = (): QueueStateMsg => {
   const app = document.querySelector('ytmusic-app')!
   const queue = app.querySelector('ytmusic-player-queue')!
-  const queueContents = queue.querySelector("#contents")
+  const queueContents = queue.querySelector('#contents')
   const queueChildren = queueContents?.children
 
   const qca = Array.from(queueChildren!)
 
   const elementIsSelected = (qi: Element) => {
-    return qi.hasAttribute("selected") ||
-      (qi.querySelector("#primary-renderer ytmusic-player-queue-item")?.hasAttribute("selected") || false)
+    return qi.hasAttribute('selected')
+      || (qi.querySelector('#primary-renderer ytmusic-player-queue-item')?.hasAttribute('selected') ?? false)
   }
 
   const idx = qca.findIndex(elementIsSelected)
 
   return {
     currentIndex: idx === -1 ? undefined : idx,
-    items: qca.map(e => {
+    items: qca.map((e) => {
       return {
-        title: e.querySelector<HTMLElement>(".song-title")?.title!,
-        author: e.querySelector<HTMLElement>(".byline")?.title!,
-        thumbnailUrl: e.querySelector<HTMLImageElement>(".yt-img-shadow")?.src!
+        title: e.querySelector<YtFormattedStringElement>('.song-title')!.title,
+        author: e.querySelector<YtFormattedStringElement>('.byline')!.title,
+        thumbnailUrl: e.querySelector<HTMLImageElement>('.yt-img-shadow')!.src,
       }
-    })
+    }),
   }
 }
 
+function stateMessageForQueue(queue: Element) {
+  const queueContents = queue.querySelector('#contents')
+  const queueChildren = queueContents?.children
+
+  const qca = Array.from(queueChildren!)
+
+  const elementIsSelected = (qi: Element) => {
+    return (qi.hasAttribute('selected')
+      || qi.querySelector('#primary-renderer > ytmusic-player-queue-item')?.hasAttribute('selected'))
+    ?? false
+  }
+
+  const idx = qca.findIndex(elementIsSelected)
+
+  const now: QueueStateMsg = {
+    currentIndex: idx === -1 ? undefined : idx,
+    items: qca.map((e) => {
+      return {
+        title: e.querySelector<YtFormattedStringElement>('.song-title')!.title,
+        author: e.querySelector<YtFormattedStringElement>('.byline')!.title,
+        thumbnailUrl: e.querySelector<HTMLImageElement>('.yt-img-shadow')!.src,
+      }
+    }),
+  }
+  return now
+}
+
 const tabCtxSubscribeQueueState = (portName: string, extensionId: string): void => {
-  // @ts-ignore
   const app = document.querySelector('ytmusic-app')!
   const queue = app.querySelector('ytmusic-player-queue')!
 
-  let port = chrome.runtime.connect(extensionId, { name: portName })
+  const port = chrome.runtime.connect(extensionId, { name: portName })
 
-  let handler = (records: MutationRecord[]) => {
+  const handler = (_records: MutationRecord[]) => {
     const app = document.querySelector('ytmusic-app')!
     const queue = app.querySelector('ytmusic-player-queue')!
-    const queueContents = queue.querySelector("#contents")
-    const queueChildren = queueContents?.children
 
-    const qca = Array.from(queueChildren!)
-
-    const elementIsSelected = (qi: Element) => {
-      return qi.hasAttribute("selected") ||
-        qi.querySelector("#primary-renderer > ytmusic-player-queue-item")?.hasAttribute("selected")
-    }
-
-    const idx = qca.findIndex(elementIsSelected)
-
-    const msg: QueueStateMsg = {
-      currentIndex: idx === -1 ? undefined : idx,
-      items: qca.map(e => {
-        return {
-          title: e.querySelector<HTMLElement>(".song-title")?.title!,
-          author: e.querySelector<HTMLElement>(".byline")?.title!,
-          thumbnailUrl: e.querySelector<HTMLImageElement>(".yt-img-shadow")?.src!
-        }
-      })
-    }
+    const msg: QueueStateMsg = stateMessageForQueue(queue)
     port.postMessage(msg)
   }
 
@@ -281,82 +291,60 @@ const tabCtxSubscribeQueueState = (portName: string, extensionId: string): void 
     subtree: true,
     childList: true,
     attributes: true,
-    characterData: true
+    characterData: true,
   }
 
   const mutationObserver = new MutationObserver(handler)
 
-  port.onMessage.addListener(msg => {
+  port.onMessage.addListener((_msg) => {
     mutationObserver.disconnect()
   })
 
   mutationObserver.observe(queue, config)
 
   // populate the response dictionary by sending the current state as well
-  const queueContents = queue.querySelector("#contents")
-  const queueChildren = queueContents?.children
-
-  const qca = Array.from(queueChildren!)
-
-  const elementIsSelected = (qi: Element) => {
-    return qi.hasAttribute("selected") ||
-      qi.querySelector("#primary-renderer > ytmusic-player-queue-item")?.hasAttribute("selected")
-  }
-
-  const idx = qca.findIndex(elementIsSelected)
-
-  const now: QueueStateMsg = {
-    currentIndex: idx === -1 ? undefined : idx,
-    items: qca.map(e => {
-      return {
-        title: e.querySelector<HTMLElement>(".song-title")?.title!,
-        author: e.querySelector<HTMLElement>(".byline")?.title!,
-        thumbnailUrl: e.querySelector<HTMLImageElement>(".yt-img-shadow")?.src!
-      }
-    })
-  }
+  const now = stateMessageForQueue(queue)
   port.postMessage(now)
 }
 
-const unaryYtmCall = async <Args extends any[], Result>(func: (...args: Args) => Result, args: Args): Promise<Awaited<Result>> => {
-  let tab = await getOrCreateYtmTab()
-  let [result] = await chrome.scripting.executeScript({
+const unaryYtmCall = async <Args extends unknown[], Result>(func: (...args: Args) => Result, args: Args): Promise<Awaited<Result>> => {
+  const tab = await getOrCreateYtmTab()
+  const [result] = await chrome.scripting.executeScript({
     target: { tabId: tab.id! },
     func: func,
     args: args,
-    world: "MAIN"
+    world: 'MAIN',
   })
-  // @ts-ignore
-  return result.result
+  return (result.result as Awaited<Result>)
 }
 
-const streamYtmSubscribe: <Args extends any[], Result>(
+const streamYtmSubscribe: <Args extends unknown[], Result>(
   tabCtxSubscribe: (portName: string, extensionId: string, ...args: Args) => (void | Promise<void>),
   args: Args,
   subscriber: Subscriber<Result>
 ) => Unsubscribable = (tabCtxSubscribe, args, subscriber) => {
-  let portName = crypto.randomUUID()
+  const portName = crypto.randomUUID()
 
-  let ready: Promise<chrome.runtime.Port> = (async () => {
-    let tab = await getOrCreateYtmTab()
+  const ready: Promise<chrome.runtime.Port> = (async () => {
+    const tab = await getOrCreateYtmTab()
 
-    let portPromise: Promise<chrome.runtime.Port> = new Promise(resolve => {
+    const portPromise = new Promise<chrome.runtime.Port>((resolve) => {
       const listener = (port: chrome.runtime.Port) => {
         if (port.name !== portName) return
 
         chrome.runtime.onConnectExternal.removeListener(listener)
-        port.onMessage.addListener(m => subscriber.next(m))
+        port.onMessage.addListener(m => subscriber.next(m)) // eslint-disable-line @typescript-eslint/no-unsafe-argument
         resolve(port)
       }
 
       chrome.runtime.onConnectExternal.addListener(listener)
     })
 
-    let [result] = await chrome.scripting.executeScript({
+    const [_result] = await chrome.scripting.executeScript({
       target: { tabId: tab.id! },
       func: tabCtxSubscribe,
       args: [portName, chrome.runtime.id, ...args],
-      world: "MAIN"
+      world: 'MAIN',
     })
 
     return await portPromise
@@ -364,84 +352,84 @@ const streamYtmSubscribe: <Args extends any[], Result>(
 
   return {
     unsubscribe() {
-      ready.then(port => {
-        port.postMessage({})
+      (void ready.then((port) => {
+        void port.postMessage({})
         port.disconnect()
-      })
-    }
+      }))
+    },
   }
 }
 
-const streamYtmObservable = <Args extends any[], Result>(
+const streamYtmObservable = <Args extends unknown[], Result>(
   tabCtxSubscribe: (portName: string, extensionId: string, ...args: Args) => (void | Promise<void>),
-  args: Args
+  args: Args,
 ): Observable<Result> => {
   return new Observable<Result>(subscriber => streamYtmSubscribe(
     tabCtxSubscribe,
     args,
-    subscriber
+    subscriber,
   ))
 }
 
-const playerStateObservable: Observable<PlayerStateMsg> =
-  streamYtmObservable<[], number>(tabCtxSubscribePlayerState, []).pipe(map(stateNumber => ({
+const playerStateObservable: Observable<PlayerStateMsg>
+  = streamYtmObservable<[], number>(tabCtxSubscribePlayerState, []).pipe(map(stateNumber => ({
     state: stateLookup[stateNumber],
   })))
 
-const queueStateObservable: Observable<QueueStateMsg> =
-  streamYtmObservable(tabCtxSubscribeQueueState, [])
+const queueStateObservable: Observable<QueueStateMsg>
+  = streamYtmObservable(tabCtxSubscribeQueueState, [])
 
-const volumeObservable: Observable<VolumeMsg> =
-  streamYtmObservable(tabCtxSubscribeVolume, [])
+const volumeObservable: Observable<VolumeMsg>
+  = streamYtmObservable(tabCtxSubscribeVolume, [])
 
 const ytMusicServer: YtMusic = {
-  async DoNext(request: Empty): Promise<Empty> {
+  async DoNext(_request: Empty): Promise<Empty> {
     return await unaryYtmCall(tabCtxDoNext, [])
   },
-  async DoPause(request: Empty): Promise<Empty> {
+  async DoPause(_request: Empty): Promise<Empty> {
     return await unaryYtmCall(tabCtxDoPause, [])
   },
-  async DoPlay(request: Empty): Promise<Empty> {
+  async DoPlay(_request: Empty): Promise<Empty> {
     return await unaryYtmCall(tabCtxDoPlay, [])
   },
   async DoPlayQueueIndex(request: PlayQueueIndexMsg): Promise<Empty> {
     return await unaryYtmCall(tabCtxDoPlayQueueIndex, [request])
   },
-  async DoPrevious(request: Empty): Promise<Empty> {
+  async DoPrevious(_request: Empty): Promise<Empty> {
     return await unaryYtmCall(tabCtxDoPrevious, [])
   },
-  async GetNowPlaying(request: Empty): Promise<NowPlayingMsg> {
+  async GetNowPlaying(_request: Empty): Promise<NowPlayingMsg> {
     return await unaryYtmCall(tabCtxGetNowPlaying, [])
   },
-  async GetPlayerState(request: Empty): Promise<PlayerStateMsg> {
+  async GetPlayerState(_request: Empty): Promise<PlayerStateMsg> {
     const stateNumber = await unaryYtmCall(tabCtxGetPlayerState, [])
     return {
-      state: stateLookup[stateNumber]
+      state: stateLookup[stateNumber],
     }
   },
-  async GetQueueState(request: Empty): Promise<QueueStateMsg> {
+  async GetQueueState(_request: Empty): Promise<QueueStateMsg> {
     return await unaryYtmCall(tabCtxGetQueueState, [])
   },
-  async GetVolume(request: Empty): Promise<VolumeMsg> {
+  async GetVolume(_request: Empty): Promise<VolumeMsg> {
     return await unaryYtmCall(tabCtxGetVolume, [])
   },
-  NowPlaying(request: Empty): Observable<NowPlayingMsg> {
+  NowPlaying(_request: Empty): Observable<NowPlayingMsg> {
     return playerStateObservable.pipe(mergeMap(
-      async () => await unaryYtmCall(tabCtxGetNowPlaying, [])
+      async () => await unaryYtmCall(tabCtxGetNowPlaying, []),
     ))
   },
-  PlayerState(request: Empty): Observable<PlayerStateMsg> {
+  PlayerState(_request: Empty): Observable<PlayerStateMsg> {
     return playerStateObservable
   },
-  QueueState(request: Empty): Observable<QueueStateMsg> {
+  QueueState(_request: Empty): Observable<QueueStateMsg> {
     return queueStateObservable
   },
   async SetVolume(request: VolumeMsg): Promise<Empty> {
     return await unaryYtmCall(tabCtxSetVolume, [request])
   },
-  Volume(request: Empty): Observable<VolumeMsg> {
+  Volume(_request: Empty): Observable<VolumeMsg> {
     return volumeObservable
-  }
+  },
 }
 
 interface RpcUnsub {
@@ -449,31 +437,30 @@ interface RpcUnsub {
 }
 
 interface RpcMsg {
-  message: any,
-  tx_id: string,
+  message: unknown
+  tx_id: string
   method: string
 }
 
-let subscriptions: Record<string, Subscription> = {}
+const subscriptions: Record<string, Subscription> = {}
 
 const handleMsg = async (msg: RpcMsg | RpcUnsub): Promise<void> => {
-  if("method" in msg) {
-    if(!msg.method.startsWith("/YtMusic/")) return;
+  if ('method' in msg) {
+    if (!msg.method.startsWith('/YtMusic/')) return
 
-    const methodName = msg.method.substring("/YtMusic/".length)
-    const caller: (request: any) => Promise<any> | Observable<any> =
-      // @ts-ignore
-      ytMusicServer[methodName]
+    const methodName: keyof YtMusic = (msg.method.substring('/YtMusic/'.length)) as keyof YtMusic
+    const caller
+      = ytMusicServer[methodName] as ((message: unknown) => Promise<unknown> | Observable<unknown>)
 
     const result = caller(msg.message)
 
     if (result instanceof Observable) {
-      const observer: Partial<Observer<any>> = {
-        next(value: any) {
+      const observer: Partial<Observer<unknown>> = {
+        next(value: unknown) {
           const returnObj = { tx_id: msg.tx_id, message: value }
           console.log('returning stream message: ', returnObj)
           rpcHost.postMessage(returnObj)
-        }
+        },
       }
 
       console.log('creating subscription')
@@ -487,7 +474,7 @@ const handleMsg = async (msg: RpcMsg | RpcUnsub): Promise<void> => {
     }
   } else {
     const subscription = subscriptions[msg.tx_id]
-    if(subscription === undefined) return;
+    if (subscription === undefined) return
 
     delete subscriptions[msg.tx_id]
     subscription.unsubscribe()
@@ -495,6 +482,6 @@ const handleMsg = async (msg: RpcMsg | RpcUnsub): Promise<void> => {
 }
 
 rpcHost.onMessage.addListener((msg: RpcMsg | RpcUnsub) => {
-  console.log("received msg: ", msg)
-  handleMsg(msg) // fire-and-forget
+  console.log('received msg: ', msg)
+  ;(void handleMsg(msg))
 })
