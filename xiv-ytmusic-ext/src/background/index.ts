@@ -24,10 +24,6 @@ interface YtFormattedStringElement extends HTMLElement {
   readonly title: string
 }
 
-function getCurrentDocumentPlayerElement(): YtMusicPlayerElement {
-  return document.querySelector<YtMusicPlayerElement>('#player')!
-}
-
 chrome.runtime.onStartup.addListener(() => {
   console.log('startup! this message exists to work around a Chrome bug')
   console.log(YtMusicClientImpl)
@@ -91,13 +87,13 @@ const rpcHost = chrome.runtime.connectNative('tf.bug.xiv_ytmusic_rpchost')
 console.log('rpc host started: ', rpcHost)
 
 const tabCtxGetVolume = (): VolumeMsg => {
-  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
+  const player: YT.Player = document.querySelector<YtMusicPlayerElement>('#player')!.getPlayer()
 
   return { volume: player.getVolume() }
 }
 
 const tabCtxSubscribeVolume = (portName: string, extensionId: string): void => {
-  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
+  const player: YT.Player = document.querySelector<YtMusicPlayerElement>('#player')!.getPlayer()
 
   const port = chrome.runtime.connect(extensionId, { name: portName })
 
@@ -120,13 +116,13 @@ const tabCtxSubscribeVolume = (portName: string, extensionId: string): void => {
 }
 
 const tabCtxSetVolume = (v: VolumeMsg): Empty => {
-  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
+  const player: YT.Player = document.querySelector<YtMusicPlayerElement>('#player')!.getPlayer()
   player.setVolume(v.volume)
   return {}
 }
 
 const tabCtxSubscribePlayerState = (portName: string, extensionId: string): void => {
-  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
+  const player: YT.Player = document.querySelector<YtMusicPlayerElement>('#player')!.getPlayer()
 
   const port = chrome.runtime.connect(extensionId, { name: portName })
 
@@ -148,7 +144,7 @@ const tabCtxSubscribePlayerState = (portName: string, extensionId: string): void
 }
 
 const tabCtxDoNext = (): Empty => {
-  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
+  const player: YT.Player = document.querySelector<YtMusicPlayerElement>('#player')!.getPlayer()
 
   player.nextVideo()
 
@@ -156,7 +152,7 @@ const tabCtxDoNext = (): Empty => {
 }
 
 const tabCtxDoPause = (): Empty => {
-  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
+  const player: YT.Player = document.querySelector<YtMusicPlayerElement>('#player')!.getPlayer()
 
   player.pauseVideo()
 
@@ -164,7 +160,7 @@ const tabCtxDoPause = (): Empty => {
 }
 
 const tabCtxDoPlay = (): Empty => {
-  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
+  const player: YT.Player = document.querySelector<YtMusicPlayerElement>('#player')!.getPlayer()
 
   player.playVideo()
 
@@ -187,7 +183,7 @@ const tabCtxDoPlayQueueIndex = (request: PlayQueueIndexMsg): Empty => {
 }
 
 const tabCtxDoPrevious = (): Empty => {
-  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
+  const player: YT.Player = document.querySelector<YtMusicPlayerElement>('#player')!.getPlayer()
 
   player.previousVideo()
 
@@ -195,7 +191,7 @@ const tabCtxDoPrevious = (): Empty => {
 }
 
 const tabCtxGetNowPlaying = (): NowPlayingMsg => {
-  const playerElem = getCurrentDocumentPlayerElement()
+  const playerElem = document.querySelector<YtMusicPlayerElement>('#player')!
   const player: YT.Player = playerElem.getPlayer()
 
   const title: string = player.getVideoData().title
@@ -214,7 +210,7 @@ const tabCtxGetNowPlaying = (): NowPlayingMsg => {
 }
 
 const tabCtxGetPlayerState = (): number => {
-  const player: YT.Player = getCurrentDocumentPlayerElement().getPlayer()
+  const player: YT.Player = document.querySelector<YtMusicPlayerElement>('#player')!.getPlayer()
 
   return player.getPlayerState()
 }
@@ -246,7 +242,58 @@ const tabCtxGetQueueState = (): QueueStateMsg => {
   }
 }
 
-function stateMessageForQueue(queue: Element) {
+const tabCtxSubscribeQueueState = (portName: string, extensionId: string): void => {
+  const app = document.querySelector('ytmusic-app')!
+  const queue = app.querySelector('ytmusic-player-queue')!
+
+  const port = chrome.runtime.connect(extensionId, { name: portName })
+
+  const handler = (_records: MutationRecord[]) => {
+    const app = document.querySelector('ytmusic-app')!
+    const queue = app.querySelector('ytmusic-player-queue')!
+
+    const queueContents = queue.querySelector('#contents')
+    const queueChildren = queueContents?.children
+
+    const qca = Array.from(queueChildren!)
+
+    const elementIsSelected = (qi: Element) => {
+      return (qi.hasAttribute('selected')
+        || qi.querySelector('#primary-renderer > ytmusic-player-queue-item')?.hasAttribute('selected'))
+      ?? false
+    }
+
+    const idx = qca.findIndex(elementIsSelected)
+
+    const msg: QueueStateMsg = {
+      currentIndex: idx === -1 ? undefined : idx,
+      items: qca.map((e) => {
+        return {
+          title: e.querySelector<YtFormattedStringElement>('.song-title')!.title,
+          author: e.querySelector<YtFormattedStringElement>('.byline')!.title,
+          thumbnailUrl: e.querySelector<HTMLImageElement>('.yt-img-shadow')!.src,
+        }
+      }),
+    }
+    port.postMessage(msg)
+  }
+
+  const config: MutationObserverInit = {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    characterData: true,
+  }
+
+  const mutationObserver = new MutationObserver(handler)
+
+  port.onMessage.addListener((_msg) => {
+    mutationObserver.disconnect()
+  })
+
+  mutationObserver.observe(queue, config)
+
+  // populate the response dictionary by sending the current state as well
   const queueContents = queue.querySelector('#contents')
   const queueChildren = queueContents?.children
 
@@ -270,40 +317,6 @@ function stateMessageForQueue(queue: Element) {
       }
     }),
   }
-  return now
-}
-
-const tabCtxSubscribeQueueState = (portName: string, extensionId: string): void => {
-  const app = document.querySelector('ytmusic-app')!
-  const queue = app.querySelector('ytmusic-player-queue')!
-
-  const port = chrome.runtime.connect(extensionId, { name: portName })
-
-  const handler = (_records: MutationRecord[]) => {
-    const app = document.querySelector('ytmusic-app')!
-    const queue = app.querySelector('ytmusic-player-queue')!
-
-    const msg: QueueStateMsg = stateMessageForQueue(queue)
-    port.postMessage(msg)
-  }
-
-  const config: MutationObserverInit = {
-    subtree: true,
-    childList: true,
-    attributes: true,
-    characterData: true,
-  }
-
-  const mutationObserver = new MutationObserver(handler)
-
-  port.onMessage.addListener((_msg) => {
-    mutationObserver.disconnect()
-  })
-
-  mutationObserver.observe(queue, config)
-
-  // populate the response dictionary by sending the current state as well
-  const now = stateMessageForQueue(queue)
   port.postMessage(now)
 }
 
