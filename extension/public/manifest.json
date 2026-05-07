@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "XIV YtMusic Extension",
+  "version": "0.0.0",
+  "description": "FFXIV↔YouTube Music bridge",
+  "host_permissions": ["*://music.youtube.com/*", "http://localhost/*"],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://music.youtube.com/*"],
+      "js": ["content-script.js"]
+    }
+  ],
+  "externally_connectable": {
+    "matches": ["*://music.youtube.com/*"]
+  },
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

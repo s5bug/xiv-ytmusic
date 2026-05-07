@@ -1,0 +1,28 @@
+{
+  "name": "foo-extension",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch & vite build --config vite.config.content.ts --watch",
+    "dev:main": "vite build --watch",
+    "dev:content": "vite build --config vite.config.content.ts --watch",
+    "build": "vite build && vite build --config vite.config.content.ts && pnpm run check",
+    "check": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.app.json --noEmit && biome check .",
+    "fmt": "biome check --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/chrome": "^0.1.40",
+    "@types/node": "^25.6.0",
+    "ts-proto": "^2.11.7",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.12.0",
+    "@improbable-eng/grpc-web": "^0.15.0",
+    "browser-headers": "^0.4.1",
+    "rxjs": "^7.8.2"
+  }
+}

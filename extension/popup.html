@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>XIV YtMusic Extension</title>
+	</head>
+	<body>
+		<main>
+			<h1>Foo Extension</h1>
+			<form id="config-form">
+				<label>
+					Port
+					<input type="number" id="port-input" value="18963" required min="1" max="65535" />
+				</label>
+				<button type="submit">Send</button>
+			</form>
+			<output id="status"></output>
+		</main>
+		<script type="module" src="./src/popup/main.ts"></script>
+	</body>
+</html>
