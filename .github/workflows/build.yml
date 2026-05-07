@@ -8,26 +8,28 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-plugin:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10
-      - name: Install dependencies
-        working-directory: ./plugin
-        run: dotnet restore
-      - name: Build
-        working-directory: ./plugin
-        run: dotnet build --no-restore
+#   build-plugin:
+#     runs-on: windows-latest
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v6
+#       - name: Set up .NET
+#         uses: actions/setup-dotnet@v5
+#         with:
+#           dotnet-version: 10
+#       - name: Install dependencies
+#         working-directory: ./plugin
+#         run: dotnet restore
+#       - name: Build
+#         working-directory: ./plugin
+#         run: dotnet build --no-restore
   build-extension:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
       - name: Set up PNPM
         uses: pnpm/action-setup@v6
         with:
@@ -38,6 +40,7 @@ jobs:
         with:
           node-version: latest
           cache: 'pnpm'
+          cache-dependency-path: ./extension/pnpm-lock.yaml
       - name: Install dependencies
         working-directory: ./extension
         run: pnpm install
