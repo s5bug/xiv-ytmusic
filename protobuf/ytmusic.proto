@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+
+option csharp_namespace = "YtMusicPlugin";
+
+service YtMusic {
+  rpc Connect (stream YtMusicToController) returns (stream ControllerToYtMusic);
+}
+
+message YtMusicToController {
+  oneof s2c {
+    double streamVolume = 1;
+	PlayerStateEnum streamPlayerState = 2;
+	NowPlayingMsg streamNowPlaying = 3;
+	QueueStateMsg streamQueueState = 4;
+  }
+}
+
+message ControllerToYtMusic {
+  oneof c2s {
+    double setVolume = 1;
+	
+	google.protobuf.Empty doNext = 2;
+	google.protobuf.Empty doPrevious = 3;
+	google.protobuf.Empty doPlay = 4;
+	google.protobuf.Empty doPause = 5;
+	
+	uint32 doPlayQueueIndex = 6;
+  }
+}
+
+enum PlayerStateEnum {
+  PS_UNSTARTED = 0;
+  PS_ENDED = 1;
+  PS_PLAYING = 2;
+  PS_PAUSED = 3;
+  PS_BUFFERING = 4;
+  PS_VIDEO_QUEUED = 5;
+}
+
+message NowPlayingMsg {
+  string title = 1;
+  string author = 2;
+  string thumbnail_url = 3;
+  string cover_url = 4;
+}
+
+message QueueStateMsg {
+  optional uint32 current_index = 1;
+  repeated QueueItemMsg items = 2;
+}
+
+message QueueItemMsg {
+  string title = 1;
+  string author = 2;
+  string thumbnail_url = 3;
+}

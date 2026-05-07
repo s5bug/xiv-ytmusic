@@ -1,0 +1,278 @@
+﻿using System;
+using System.Net.Http;
+using System.Numerics;
+using System.Runtime.Caching;
+using System.Threading.Tasks;
+using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
+using Dalamud.Interface.Textures.TextureWraps;
+using Dalamud.Interface.Utility.Raii;
+using Dalamud.Interface.Windowing;
+using Dalamud.Plugin.Services;
+using Dalamud.Utility.Numerics;
+
+namespace YtMusicPlugin.Windows;
+
+public class MainWindow : Window, IDisposable
+{
+    private readonly Plugin plugin;
+    private readonly YtMusicService service;
+    private readonly ITextureProvider textureProvider;
+    private readonly HttpClient httpClient;
+    private readonly MemoryCache urlTextureCache;
+
+    // We give this window a hidden ID using ##.
+    // The user will see "My Amazing Window" as window title,
+    // but for ImGui the ID is "My Amazing Window##With a hidden ID"
+    public MainWindow(Plugin plugin, YtMusicService service, ITextureProvider textureProvider)
+        : base(
+            "YouTube Music##ytm main window",
+            ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse | ImGuiWindowFlags.NoResize)
+    {
+        SizeConstraints = new WindowSizeConstraints
+        {
+            MinimumSize = new Vector2(800, 400),
+            MaximumSize = new Vector2(800, 400)
+        };
+
+        this.plugin = plugin;
+        this.service = service;
+        this.textureProvider = textureProvider;
+        httpClient = new HttpClient();
+        urlTextureCache = new MemoryCache("xivytmusic thumbnail texture cache");
+    }
+
+    private static void RemovedCallback(CacheEntryRemovedArguments args) {
+        var tw = args.CacheItem.Value as Task<IDalamudTextureWrap>;
+    }
+
+    private async Task<IDalamudTextureWrap> FetchNew(string url) {
+        var stream = await httpClient.GetStreamAsync(url);
+        return await textureProvider.CreateFromImageAsync(stream);
+    }
+    
+    public IDalamudTextureWrap? GrabTexture(string url) {
+        if (urlTextureCache.Get(url) is Task<IDalamudTextureWrap> tw) {
+            return tw.Status == TaskStatus.RanToCompletion ? tw.Result : null;
+        }
+
+        urlTextureCache.Add(url, FetchNew(url), new CacheItemPolicy {
+            RemovedCallback = RemovedCallback,
+            SlidingExpiration = TimeSpan.FromMinutes(10)
+        });
+        return null;
+    }
+    
+    public void Dispose() {
+        httpClient.Dispose();
+        urlTextureCache.Dispose();
+    }
+
+    public override void Draw() {
+        var framePaddingX = ImGui.GetStyle().FramePadding.X;
+        var framePaddingY = ImGui.GetStyle().FramePadding.Y;
+        
+        var lineHeightSpacing = ImGui.GetTextLineHeightWithSpacing();
+        var lineHeight = ImGui.GetTextLineHeight();
+
+        var smallSongHeight = lineHeightSpacing + lineHeight;
+        var smallSongCoverWidth = smallSongHeight;
+
+        var bottomBarHeight = smallSongHeight + (2 * framePaddingY);
+        var topSectionHeight = ImGui.GetContentRegionAvail().Y - bottomBarHeight - (2 * framePaddingY);
+        var playlistWidth = ImGui.GetContentRegionAvail().X - topSectionHeight - (2 * framePaddingX);
+        
+        if (ImGui.BeginChild("cover_progress", new Vector2(topSectionHeight, topSectionHeight))) {
+            this.DrawCoverProgress(lineHeightSpacing);
+        }
+        ImGui.EndChild();
+        ImGui.SameLine();
+        if (ImGui.BeginChild("playlist_tabs", new Vector2(playlistWidth, topSectionHeight))) {
+            this.DrawPlaylistTabs(smallSongHeight, lineHeightSpacing);
+        }
+        ImGui.EndChild();
+
+        if (ImGui.BeginChild("controls_box", new Vector2(ImGui.GetContentRegionAvail().X, bottomBarHeight))) {
+            this.DrawControlsBox(smallSongHeight, lineHeightSpacing);
+        }
+        ImGui.EndChild();
+    }
+    
+    public void DrawCoverProgress(float lineHeightSpacing) {
+        float coverHeight = ImGui.GetContentRegionAvail().Y - lineHeightSpacing - (2 * ImGui.GetStyle().FramePadding.Y);
+        float leftoverSpace = ImGui.GetContentRegionAvail().X - coverHeight;
+        float offset = leftoverSpace / 2.0f;
+        
+        if (service.State?.NowPlaying is { } nowPlayingMsg) {
+            IDalamudTextureWrap? img = GrabTexture(nowPlayingMsg.CoverUrl);
+
+            if (img is { } tw) {
+                ImGui.SetCursorPosX(ImGui.GetCursorPosX() + offset);
+                ImGui.Image(tw.Handle, new Vector2(coverHeight, coverHeight));
+            } else {
+                using var font = ImRaii.PushFont(UiBuilder.IconFont);
+                ImGui.Text(FontAwesomeIcon.QuestionCircle.ToIconString());
+            }
+        }
+        
+        ImGui.Text("0:30"); // TODO
+        ImGui.SameLine();
+        ImGui.SliderFloat("progress", ref dummy, 0.0f, 1.0f); // TODO
+        ImGui.SameLine();
+        ImGui.Text("1:00"); // TODO
+    }
+    
+    private float dummy = 0.5f; // TODO
+
+    public void DrawPlaylistTabs(float smallSongHeight, float lineHeightSpacing) {
+        if (ImGui.BeginTabBar("playlist_tabs")) {
+            if (ImGui.BeginTabItem("Up Next")) {
+                if (ImGui.BeginChild("###playlist_upnext_container")) {
+                    var current = service.State?.QueueState;
+                    var itemSize = new Vector2(ImGui.GetContentRegionAvail().X, smallSongHeight);
+                    for (int i = 0; i < current.Items.Count; i++) {
+                        var queueItemMsg = current.Items[i];
+                        var isSelected = current.HasCurrentIndex && i == current.CurrentIndex;
+
+                        ImGui.PushStyleColor(ImGuiCol.Button,
+                                             isSelected ? new Vector4(0.5f, 0.5f, 0.5f, 0.1f) : Vector4.Zero);
+
+                        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.5f, 0.5f, 0.5f, 0.2f));
+                        ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.5f, 0.5f, 0.5f, 0.35f));
+                        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 0);
+
+                        var preButtonCursor = ImGui.GetCursorPos();
+
+                        if (ImGui.Button($"###playlist_button{i}", itemSize)) {
+                            service.State.DoPlayQueueIndex((uint) i);
+                        }
+
+                        ImGui.PopStyleVar();
+
+                        ImGui.PopStyleColor(3);
+
+                        ImGui.SetCursorPos(preButtonCursor);
+                        if (ImGui.BeginChild($"###playlist_smallsong{i}", itemSize, false, ImGuiWindowFlags.NoInputs)) {
+                            DrawSmallSong(
+                                smallSongHeight,
+                                lineHeightSpacing,
+                                queueItemMsg.Title,
+                                queueItemMsg.Author,
+                                queueItemMsg.ThumbnailUrl);
+                        }
+
+                        ImGui.EndChild();
+                    }
+                }
+                ImGui.EndChild();
+
+                ImGui.EndTabItem();
+            }
+
+            if (ImGui.BeginTabItem("Related")) {
+                ImGui.Text("related would go here"); // TODO
+                ImGui.EndTabItem();
+            }
+            ImGui.EndTabBar();
+        }
+    }
+    
+    public void DrawControlsBox(float smallSongHeight, float lineHeightSpacing) {
+        if (ImGui.BeginTable("controls_table", 3, ImGuiTableFlags.SizingStretchSame, ImGui.GetContentRegionAvail())) {
+            ImGui.TableNextRow();
+            
+            if (ImGui.TableNextColumn()) {
+                using (var font = ImRaii.PushFont(UiBuilder.IconFont)) {
+                    if (ImGui.Button(FontAwesomeIcon.StepBackward.ToIconString())) {
+                        service.State.DoPrevious();
+                    }
+
+                    ImGui.SameLine();
+                    switch (service.State.PlayerState) {
+                        case PlayerStateEnum.PsPlaying:
+                        case PlayerStateEnum.PsBuffering:
+                            if (ImGui.Button(FontAwesomeIcon.Pause.ToIconString())) {
+                                service.State.DoPause();
+                            }
+
+                            break;
+                        case PlayerStateEnum.PsPaused:
+                            if (ImGui.Button(FontAwesomeIcon.Play.ToIconString())) {
+                                service.State.DoPlay();
+                            }
+
+                            break;
+                        default:
+                            if (ImGui.Button(FontAwesomeIcon.Question.ToIconString())) { }
+
+                            break;
+                    }
+
+                    ImGui.SameLine();
+                    if (ImGui.Button(FontAwesomeIcon.StepForward.ToIconString())) {
+                        service.State.DoNext();
+                    }
+                }
+            }
+
+            if (ImGui.TableNextColumn()) {
+                if (service.State.NowPlaying is { } nowPlayingMsg) {
+                    DrawSmallSong(
+                        smallSongHeight,
+                        lineHeightSpacing,
+                        nowPlayingMsg.Title,
+                        nowPlayingMsg.Author,
+                        nowPlayingMsg.ThumbnailUrl);
+                }
+            }
+
+            if (ImGui.TableNextColumn()) {
+                // TODO change icon based on volume state
+                if (service.State?.Volume is { } volumeMsg) {
+                    int volumeToSend = (int) volumeMsg; // always 0-100 anyways so who cares
+                    if (ImGui.SliderInt("##volumeSlider", ref volumeToSend, 0, 100))
+                    {
+                        service.State.Volume = volumeToSend;
+                    }
+
+                    ImGui.SameLine();
+                    using var font = ImRaii.PushFont(UiBuilder.IconFont);
+                    ImGui.Text(FontAwesomeIcon.VolumeUp.ToIconString());
+                } else {
+                    using var font = ImRaii.PushFont(UiBuilder.IconFont);
+                    ImGui.Text(FontAwesomeIcon.VolumeOff.ToIconString());
+                }
+            }
+
+            ImGui.EndTable();
+        }
+    }
+
+    private void DrawSmallSong(
+        float smallSongHeight,
+        float lineHeightSpacing,
+        string title,
+        string author,
+        string thumbnailUrl) {
+        if (ImGui.BeginChild("thumbnail", new Vector2(smallSongHeight, smallSongHeight), false, ImGuiWindowFlags.NoInputs)) {
+            IDalamudTextureWrap? img = GrabTexture(thumbnailUrl);
+
+            if (img is { } tw) {
+                ImGui.Image(tw.Handle, new Vector2(smallSongHeight, smallSongHeight));
+            } else {
+                using var font = ImRaii.PushFont(UiBuilder.IconFont);
+                ImGui.Text(FontAwesomeIcon.QuestionCircle.ToIconString());
+            }
+        }
+        ImGui.EndChild();
+
+        ImGui.SameLine();
+                    
+        var firstLine = ImGui.GetCursorPos();
+        ImGui.Text(title);
+
+        var secondLine = firstLine.WithY(firstLine.Y + lineHeightSpacing);
+        ImGui.SetCursorPos(secondLine);
+        ImGui.Text(author);
+    }
+}

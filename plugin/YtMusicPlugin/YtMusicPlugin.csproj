@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+  <PropertyGroup>
+    <Version>0.0.0.1</Version>
+    <PackageProjectUrl>https://github.com/goatcorp/SamplePlugin</PackageProjectUrl>
+    <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+    
+  <PropertyGroup>
+    <AspnetSharedDir>$([System.IO.Path]::GetFullPath('$(MSBuildSDKsPath)\..\..\..\shared\Microsoft.AspNetCore.App\$(BundledNETCoreAppPackageVersion)'))</AspnetSharedDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Authentication.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Authentication.Abstractions.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Authorization.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Authorization.Policy.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Connections.Abstractions.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Diagnostics.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.HostFiltering.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Hosting.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Hosting.Abstractions.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Hosting.Server.Abstractions.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Http.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Http.Abstractions.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Http.Extensions.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.HttpOverrides.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Routing.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Routing.Abstractions.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Server.IIS.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Server.IISIntegration.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Server.Kestrel.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Server.Kestrel.Core.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Server.Kestrel.Transport.NamedPipes.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Server.Kestrel.Transport.Quic.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.AspNetCore.Server.Kestrel.Transport.Sockets.dll" />
+
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Configuration.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Configuration.Abstractions.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Configuration.Binder.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Configuration.CommandLine.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Configuration.EnvironmentVariables.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Configuration.FileExtensions.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Configuration.Json.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Configuration.UserSecrets.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.DependencyInjection.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.DependencyInjection.Abstractions.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Diagnostics.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Diagnostics.Abstractions.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Features.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.FileProviders.Abstractions.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.FileProviders.Physical.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.FileSystemGlobbing.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Hosting.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Hosting.Abstractions.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Http.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Logging.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Logging.Abstractions.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Logging.Configuration.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Logging.Console.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Logging.Debug.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Logging.EventSource.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Logging.EventLog.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Options.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Options.ConfigurationExtensions.dll" />
+    <None Include="$(AspnetSharedDir)\Microsoft.Extensions.Primitives.dll" />
+    <None Include="$(AspnetSharedDir)\System.Diagnostics.EventLog.dll" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="$(AspnetSharedDir)\*.dll"
+          CopyToOutputDirectory="Always"
+          Visible="false" />
+  </ItemGroup>  
+
+  <ItemGroup>
+    <PackageReference Include="Grpc.AspNetCore" Version="2.80.0" />
+    <PackageReference Include="Google.Protobuf" Version="3.34.1" />
+    <PackageReference Include="System.Runtime.Caching" Version="$(BundledNETCoreAppPackageVersion)" />
+  </ItemGroup>
+    
+  <ItemGroup>
+    <Content Include="..\Data\goat.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </Content>
+  </ItemGroup>
+    
+  <ItemGroup>
+    <PackageReference Include="Grpc.Tools" Version="2.80.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <YtMusicProtosDir>$(MSBuildProjectDirectory)/../../protobuf</YtMusicProtosDir>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <Protobuf Include="$(YtMusicProtosDir)/ytmusic.proto" GrpcServices="Server" />
+  </ItemGroup>
+</Project>
